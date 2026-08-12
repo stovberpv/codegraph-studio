@@ -1,0 +1,57 @@
+{
+  "name": "codegraph-studio",
+  "displayName": "Codegraph Studio",
+  "version": "0.1.0",
+  "private": true,
+  "publisher": "korak",
+  "description": "Дерево вызовов TypeScript на холсте с редактированием файлов в VS Code.",
+  "type": "module",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": ["Other", "Visualization"],
+  "activationEvents": [],
+  "main": "./dist/extension.cjs",
+  "files": [
+    "dist/extension.cjs",
+    "dist/webview/**/*",
+    "README.md"
+  ],
+  "contributes": {
+    "commands": [
+      {
+        "command": "codegraph.open",
+        "title": "Open Call Graph",
+        "category": "Codegraph Studio"
+      }
+    ]
+  },
+  "bin": {
+    "codegraph-studio": "parse.ts"
+  },
+  "scripts": {
+    "parse": "tsx parse.ts",
+    "serve": "tsx serve.ts",
+    "graph": "tsx parse.ts && tsx serve.ts",
+    "build": "node esbuild.mjs",
+    "watch": "node esbuild.mjs --watch",
+    "package": "npm run build && vsce package --no-dependencies --allow-missing-repository"
+  },
+  "dependencies": {
+    "@codemirror/commands": "^6.8.0",
+    "@codemirror/lang-javascript": "^6.2.3",
+    "@codemirror/language": "^6.11.0",
+    "@codemirror/state": "^6.5.2",
+    "@codemirror/theme-one-dark": "^6.1.2",
+    "@codemirror/view": "^6.36.4",
+    "codemirror": "^6.0.1",
+    "typescript": "^5.9.2"
+  },
+  "devDependencies": {
+    "@types/node": "^22.13.10",
+    "@types/vscode": "^1.85.0",
+    "@vscode/vsce": "^3.3.2",
+    "esbuild": "^0.25.1",
+    "tsx": "^4.20.3"
+  }
+}

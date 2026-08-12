@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="ru">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>codegraph-studio — дерево вызовов</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <div id="toolbar">
+      <div class="brand"><span class="logo"></span>codegraph&nbsp;studio</div>
+
+      <span class="sep"></span>
+
+      <div class="grp" role="group" aria-label="Группировка">
+        <button id="modeFiles" class="active" title="Гравитация между файлами">файлы</button>
+        <button id="modeFolders" title="Сначала внутри папки, потом между папками">папки</button>
+      </div>
+
+      <button id="followMode" class="toggle" title="Глобальное следование: клик по файлу показывает только его и прямые связи">следование</button>
+      <button id="lazyMode" class="toggle" title="Ленивое наблюдение: все файлы видны, связи скрыты; клик по файлу показывает его вход+выход">ленивое наблюдение</button>
+
+      <span class="sep"></span>
+
+      <button id="showHidden" title="Показать скрытые файлы и вернуть входящие связи">показать скрытое</button>
+      <label class="chk" title="Спрятать файлы без межфайловых связей"><input id="hideIsolated" type="checkbox" /><span>одиночные</span></label>
+
+      <span class="sep"></span>
+
+      <div class="grp" role="group" aria-label="Вид">
+        <button id="relayout" title="Сбросить сохранённые позиции и пересобрать раскладку">сброс</button>
+        <button id="fit" title="Вписать граф в экран">вписать</button>
+      </div>
+
+      <label class="field path-field" title="Абсолютный путь к папке: /home/… , C:\\Users\\… или ~/…">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"></path></svg>
+        <input id="rootPath" class="path" type="text" spellcheck="false" placeholder="путь к папке проекта…" />
+      </label>
+      <button id="rebuild" class="primary" title="Пересобрать граф для указанной папки">пересобрать</button>
+    </div>
+    <canvas id="canvas"></canvas>
+    <div id="editors" aria-hidden="true"></div>
+
+    <!-- плавающая плашка: поиск + фильтр (слева сверху, под шапкой) -->
+    <div id="searchPanel" class="float-panel">
+      <label class="field" title="Поиск функции по имени">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"></circle><path d="m21 21-4.3-4.3"></path></svg>
+        <input id="search" type="search" placeholder="поиск функции…" />
+      </label>
+      <label class="field" title="Glob по относительному пути: server/**/*.ts, !*.test.ts">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"></polygon></svg>
+        <input id="filter" type="text" spellcheck="false" placeholder="glob: **/*.service.ts, !*.test.ts" />
+      </label>
+    </div>
+
+    <!-- плавающая плашка: свернуть/развернуть (справа) -->
+    <div id="cardPanel" class="float-panel">
+      <button id="expandAll" title="Раскрыть все карточки">развернуть</button>
+      <button id="collapseAll" title="Свернуть все карточки">свернуть</button>
+    </div>
+
+    <!-- info-bar: счётчики (справа внизу) -->
+    <div id="infobar" class="info-bar"><span id="stats">загрузка…</span></div>
+
+    <div id="hint" class="legend">
+      <span><b>колесо</b> — зум</span>
+      <span><b>фон</b> — панорама</span>
+      <span><b>узел/заголовок</b> — двигать</span>
+      <span><b>шапка папки</b> — двигать/сворачивать/скрывать</span>
+      <span><b>Shift</b>+рамка/клик — выделить группу</span>
+      <span><b>следование</b> — клик по файлу / фону</span>
+      <span><b>ленивое наблюдение</b> — клик по файлу показывает его связи</span>
+      <span><b>✎</b> — редактировать (VS Code)</span>
+    </div>
+    <div id="tooltip" class="tooltip" hidden></div>
+    <script src="viewer.js"></script>
+  </body>
+</html>

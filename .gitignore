@@ -1,0 +1,4 @@
+graph.json
+node_modules
+dist
+*.vsix
