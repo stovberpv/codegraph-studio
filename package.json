@@ -2,14 +2,25 @@
   "name": "codegraph-studio",
   "displayName": "Codegraph Studio",
   "version": "0.1.0",
+  "icon": "media/icon.png",
   "private": true,
   "publisher": "stovberpv",
   "description": "%codegraph.description%",
+  "license": "MIT",
   "type": "module",
   "engines": {
     "vscode": "^1.85.0"
   },
   "categories": ["Other", "Visualization"],
+  "keywords": [
+    "typescript",
+    "call graph",
+    "dependency graph",
+    "code visualization",
+    "architecture",
+    "canvas",
+    "ast"
+  ],
   "repository": {
     "type": "git",
     "url": "https://github.com/stovberpv/codegraph-studio.git"
@@ -91,7 +102,8 @@
     "build:prod": "node scripts/esbuild.mjs --minify",
     "watch": "node scripts/esbuild.mjs --watch",
     "typecheck": "tsc --noEmit",
-    "package": "npm run build:prod && vsce package --no-dependencies --allow-missing-repository"
+    "package": "npm run build:prod && vsce package --no-dependencies",
+    "publish": "npm run build:prod && vsce publish --no-dependencies"
   },
   "dependencies": {
     "@codemirror/commands": "^6.8.0",

@@ -1,0 +1,81 @@
+name: Release
+
+# Publishes a new version whenever code is merged to main AND the version in
+# package.json has not been released yet (no matching git tag). Bump the version
+# in package.json in your PR; merging it triggers the publish. Merges that don't
+# change the version are a no-op, so ordinary merges never fail or re-publish.
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write # create the git tag and the GitHub Release
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    env:
+      VSCE_PAT: ${{ secrets.VSCE_PAT }}
+      OVSX_PAT: ${{ secrets.OVSX_PAT }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # need tags to detect an already-released version
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - run: npm ci
+
+      - name: Type-check
+        run: npm run typecheck
+
+      - name: Read version
+        id: v
+        run: echo "version=$(node -p "require('./package.json').version")" >> "$GITHUB_OUTPUT"
+
+      - name: Check if version already released
+        id: tag
+        run: |
+          if git rev-parse "v${{ steps.v.outputs.version }}" >/dev/null 2>&1; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+            echo "::notice::v${{ steps.v.outputs.version }} already tagged — skipping publish."
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Fail if VSCE_PAT is missing
+        if: steps.tag.outputs.exists == 'false' && env.VSCE_PAT == ''
+        run: |
+          echo "::error::VSCE_PAT secret is not set. Add it in Settings → Secrets and variables → Actions."
+          exit 1
+
+      - name: Build & package
+        if: steps.tag.outputs.exists == 'false'
+        run: |
+          npm run build:prod
+          npx --no-install @vscode/vsce package --no-dependencies -o "codegraph-studio-${{ steps.v.outputs.version }}.vsix"
+
+      - name: Publish to VS Code Marketplace
+        if: steps.tag.outputs.exists == 'false'
+        run: npx --no-install @vscode/vsce publish --no-dependencies -p "$VSCE_PAT" --packagePath "codegraph-studio-${{ steps.v.outputs.version }}.vsix"
+
+      - name: Publish to Open VSX
+        if: steps.tag.outputs.exists == 'false' && env.OVSX_PAT != ''
+        run: npx --yes ovsx publish "codegraph-studio-${{ steps.v.outputs.version }}.vsix" -p "$OVSX_PAT"
+
+      - name: Tag & create GitHub Release
+        if: steps.tag.outputs.exists == 'false'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: "v${{ steps.v.outputs.version }}"
+          name: "v${{ steps.v.outputs.version }}"
+          files: "codegraph-studio-${{ steps.v.outputs.version }}.vsix"
+          generate_release_notes: true

@@ -3,24 +3,28 @@
 > Explore your TypeScript codebase as an interactive call graph — and edit files
 > right on the canvas, without leaving the map.
 
+<p align="center">
+  <a href="https://marketplace.visualstudio.com/items?itemName=stovberpv.codegraph-studio"><img alt="VS Marketplace Version" src="https://img.shields.io/visual-studio-marketplace/v/stovberpv.codegraph-studio?label=VS%20Marketplace&logo=visualstudiocode&color=2ea043"></a>
+  <a href="https://marketplace.visualstudio.com/items?itemName=stovberpv.codegraph-studio"><img alt="Installs" src="https://img.shields.io/visual-studio-marketplace/i/stovberpv.codegraph-studio?label=installs"></a>
+  <a href="https://marketplace.visualstudio.com/items?itemName=stovberpv.codegraph-studio&ssr=false#review-details"><img alt="Rating" src="https://img.shields.io/visual-studio-marketplace/r/stovberpv.codegraph-studio?label=rating"></a>
+  <a href="https://open-vsx.org/extension/stovberpv/codegraph-studio"><img alt="Open VSX Version" src="https://img.shields.io/open-vsx/v/stovberpv/codegraph-studio?label=Open%20VSX&color=a60ee5"></a>
+  <a href="https://github.com/stovberpv/codegraph-studio/actions/workflows/ci.yml"><img alt="CI" src="https://img.shields.io/github/actions/workflow/status/stovberpv/codegraph-studio/ci.yml?branch=main&label=CI&logo=github"></a>
+  <a href="LICENSE"><img alt="License: MIT" src="https://img.shields.io/github/license/stovberpv/codegraph-studio?color=blue"></a>
+</p>
+
 Codegraph Studio parses a TypeScript/TSX project with the TypeScript AST, builds
 a call graph between functions, and renders it on a fast, zoomable canvas. Cards
 are files, curved arrows are calls. Inside VS Code you can open a file **on the
 canvas** in an embedded editor (syntax highlighting, save via the workspace),
 while the graph, links, zoom, and pan stay live around it.
 
-<!-- ┌─────────────────────────────────────────────────────────────────────┐ -->
-<!-- │ HERO / DEMO VIDEO                                                    │ -->
-<!-- │ Replace with a short screen recording (GIF or MP4/loop).            │ -->
-<!-- └─────────────────────────────────────────────────────────────────────┘ -->
+<p align="center">
+  <img alt="Codegraph Studio — interactive call graph demo" src="https://raw.githubusercontent.com/stovberpv/codegraph-studio/main/media/preview.gif" width="900">
+</p>
 
-<!-- TODO(preview): demo video -->
-<!--
-https://github.com/stovberpv/codegraph-studio/assets/<id>/<demo.mp4>
--->
-
-![Codegraph Studio — call graph on the canvas](media/hero.png)
-<!-- TODO(preview): add media/hero.png -->
+<p align="center">
+  <a href="https://raw.githubusercontent.com/stovberpv/codegraph-studio/main/media/preview.mp4">▶ Watch the full-quality MP4</a>
+</p>
 
 ---
 
@@ -60,13 +64,6 @@ methods, and dependency injection through constructors and fields.
 - **Responsive parsing** — parsing runs in a background worker with a
   cancellable progress spinner, so the editor never blocks on large projects.
 
-<!-- TODO(preview): feature screenshots -->
-<!--
-| Files layout | Folder islands | On-canvas editor |
-| --- | --- | --- |
-| ![](media/layout-files.png) | ![](media/layout-folders.png) | ![](media/editor.png) |
--->
-
 ## Requirements
 
 - VS Code `^1.85.0`
@@ -74,7 +71,18 @@ methods, and dependency injection through constructors and fields.
 
 ## Install
 
-**From VSIX (current):**
+**From the Marketplace (recommended):**
+
+<p>
+  <a href="https://marketplace.visualstudio.com/items?itemName=stovberpv.codegraph-studio"><img alt="Install from VS Marketplace" src="https://img.shields.io/badge/VS%20Marketplace-Install-2ea043?logo=visualstudiocode"></a>
+  <a href="https://open-vsx.org/extension/stovberpv/codegraph-studio"><img alt="Install from Open VSX" src="https://img.shields.io/badge/Open%20VSX-Install-a60ee5"></a>
+</p>
+
+In VS Code, open the Extensions view (`⇧⌘X` / `Ctrl+Shift+X`), search for
+**Codegraph Studio**, and click **Install** — or run
+`ext install stovberpv.codegraph-studio` from the Command Palette.
+
+**From VSIX (offline / pre-release):**
 
 ```bash
 npm install
@@ -82,8 +90,6 @@ npm run package        # produces codegraph-studio-<version>.vsix
 ```
 
 Then in VS Code: **Extensions: Install from VSIX…** and pick the file.
-
-<!-- TODO(marketplace): add Marketplace install once published -->
 
 ## Usage
 
@@ -119,4 +125,4 @@ Then in VS Code: **Extensions: Install from VSIX…** and pick the file.
 
 ## License
 
-See [LICENSE](LICENSE).
+[MIT](LICENSE) © 2026 Paul Stovber

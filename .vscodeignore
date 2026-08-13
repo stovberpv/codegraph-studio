@@ -1,4 +1,5 @@
 .vscode/**
+.github/**
 src/**
 scripts/**
 docs/**
@@ -7,6 +8,12 @@ node_modules/**
 **/*.ts
 **/tsconfig.json
 .gitignore
+.gitattributes
 .cursor/**
 *.vsix
 dist/webview/graph.json
+media/preview.mp4
+media/preview.gif
+media/icon@2x.png
+tmp-*
+*.log

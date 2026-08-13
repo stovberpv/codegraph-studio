@@ -1,0 +1,39 @@
+name: CI
+
+# Validate every push (except main, which the Release workflow builds) and every
+# pull request: type-check, production build, and a package smoke-test so a broken
+# VSIX can never reach main.
+on:
+  push:
+    branches-ignore: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - run: npm ci
+
+      - name: Type-check
+        run: npm run typecheck
+
+      - name: Production build
+        run: npm run build:prod
+
+      - name: Package (smoke test)
+        run: npx --no-install @vscode/vsce package --no-dependencies -o codegraph-studio.vsix
+
+      - name: Upload VSIX artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: codegraph-studio-vsix
+          path: codegraph-studio.vsix
+          if-no-files-found: error
