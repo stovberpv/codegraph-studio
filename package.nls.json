@@ -1,0 +1,9 @@
+{
+  "codegraph.description": "TypeScript call tree on a canvas, with in-editor file editing inside VS Code.",
+  "codegraph.open.title": "Open Call Graph",
+  "codegraph.rebuild.title": "Reparse Workspace",
+  "codegraph.rebuildFrom.title": "Parse Folder…",
+  "codegraph.category": "Codegraph Studio",
+  "codegraph.view.title": "Call Graph",
+  "codegraph.config.debugParsePaths.description": "Log every directory and file the parser touches to the \"Codegraph Studio\" output channel. Use to diagnose a slow parse or a macOS permission prompt; verbose and capped at 2000 paths per parse. Off by default."
+}

@@ -1,10 +1,10 @@
 #!/usr/bin/env tsx
 /**
- * Мини-статик-сервер для просмотра графа.
- * Отдаёт файлы из папки codegraph (index.html, viewer.js, styles.css, graph.json).
- * Нужен потому, что fetch('graph.json') не работает по file:// в браузере.
+ * Minimal static server for viewing the graph.
+ * Serves files from the codegraph folder (index.html, viewer.js, styles.css, graph.json).
+ * Needed because fetch('graph.json') does not work over file:// in the browser.
  *
- * Запуск:  tsx serve.ts [--port 5173]
+ * Usage:  tsx serve.ts [--port 5173]
  */
 
 import http from "node:http";
@@ -12,13 +12,20 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { buildGraph } from "./parse.ts";
+import { buildGraph } from "../core/parse.ts";
 
-const here = path.dirname(fileURLToPath(import.meta.url));
+// static assets come from the built canvas (dist/webview): index.html, viewer.js,
+// styles.css, graph.json — produced by `npm run build` + `parse.ts`
+const here = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "dist", "webview");
 const JSON_HEADERS = { "content-type": "application/json; charset=utf-8" };
 
-// Кроссплатформенная нормализация пути к проекту (Linux/macOS/Windows).
-// Снимает кавычки, раскрывает ~, приводит к абсолютному пути в стиле текущей ОС.
+/**
+ * Normalizes a project path across platforms (Linux/macOS/Windows).
+ * Strips surrounding quotes, expands ~, and resolves to an absolute path in the
+ * current OS style.
+ * Why: the rebuild endpoint accepts free-form user input that may be quoted or
+ * home-relative, so it must be canonicalized before touching the filesystem.
+ */
 function normalizeRoot(input: string): string {
   let p = (input || "").trim();
   if ((p.startsWith('"') && p.endsWith('"')) || (p.startsWith("'") && p.endsWith("'"))) {
@@ -46,7 +53,7 @@ const server = http.createServer((req, res) => {
   const method = req.method || "GET";
   const url = (req.url || "/").split("?")[0]!;
 
-  // -- пересборка графа для указанной папки -------------------------------
+  // -- rebuild the graph for a given folder -------------------------------
   if (method === "POST" && url === "/api/rebuild") {
     let body = "";
     req.on("data", (c) => (body += c));
@@ -55,11 +62,11 @@ const server = http.createServer((req, res) => {
       try {
         payload = JSON.parse(body || "{}");
       } catch {
-        /* оставим пустым — отвалимся на проверке ниже */
+        /* leave empty — we fail on the check below */
       }
       const raw = typeof payload.root === "string" ? payload.root : "";
       if (!raw.trim()) {
-        res.writeHead(400, JSON_HEADERS).end(JSON.stringify({ error: "укажите путь к папке проекта" }));
+        res.writeHead(400, JSON_HEADERS).end(JSON.stringify({ error: "specify the project folder path" }));
         return;
       }
       const root = normalizeRoot(raw);
@@ -67,11 +74,11 @@ const server = http.createServer((req, res) => {
       try {
         stat = fs.statSync(root);
       } catch {
-        res.writeHead(400, JSON_HEADERS).end(JSON.stringify({ error: `путь не найден: ${root}` }));
+        res.writeHead(400, JSON_HEADERS).end(JSON.stringify({ error: `path not found: ${root}` }));
         return;
       }
       if (!stat.isDirectory()) {
-        res.writeHead(400, JSON_HEADERS).end(JSON.stringify({ error: `это не папка: ${root}` }));
+        res.writeHead(400, JSON_HEADERS).end(JSON.stringify({ error: `not a folder: ${root}` }));
         return;
       }
       try {
@@ -79,8 +86,8 @@ const server = http.createServer((req, res) => {
         const graph = buildGraph(root, { includeTests: !!payload.includeTests, selfDir: here });
         fs.writeFileSync(path.join(here, "graph.json"), JSON.stringify(graph));
         console.log(
-          `rebuild ${root}: ${graph.stats.files} файлов, ${graph.stats.nodes} узлов, ` +
-            `${graph.stats.edges} связей за ${Date.now() - t0}ms`,
+          `rebuild ${root}: ${graph.stats.files} files, ${graph.stats.nodes} nodes, ` +
+            `${graph.stats.edges} edges in ${Date.now() - t0}ms`,
         );
         res.writeHead(200, JSON_HEADERS).end(JSON.stringify(graph));
       } catch (e) {
@@ -91,7 +98,7 @@ const server = http.createServer((req, res) => {
   }
 
   const rel = url === "/" ? "index.html" : decodeURIComponent(url.replace(/^\/+/, ""));
-  // защита от выхода за пределы папки
+  // guard against escaping the served folder
   const abs = path.normalize(path.join(here, rel));
   if (!abs.startsWith(here)) {
     res.writeHead(403).end("forbidden");
@@ -111,16 +118,16 @@ server.listen(port, () => {
   const link = `http://localhost:${port}/`;
   console.log(`codegraph viewer: ${link}`);
   if (!fs.existsSync(path.join(here, "graph.json"))) {
-    console.log("⚠  graph.json не найден — сначала запусти:  tsx parse.ts");
+    console.log("⚠  graph.json not found — run first:  tsx parse.ts");
   }
-  // попытка открыть браузер (macOS/Linux/Windows)
+  // try to open the browser (macOS/Linux/Windows)
   const opener =
     process.platform === "darwin" ? "open" : process.platform === "win32" ? "start" : "xdg-open";
   import("node:child_process").then(({ spawn }) => {
     try {
       spawn(opener, [link], { stdio: "ignore", detached: true, shell: process.platform === "win32" }).unref();
     } catch {
-      /* не критично */
+      /* not critical */
     }
   });
 });

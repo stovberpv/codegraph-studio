@@ -1,0 +1,115 @@
+//- Single canvas template for both runtimes.
+//- Locals:
+//-   standalone — true for the browser (serve.ts), false for the VS Code webview
+//-   csp, nonce — webview only (unset in standalone)
+//-   cssHref, viewerSrc, editorSrc — resource paths/URIs
+//-   t — resolved message dictionary (see src/i18n/webview.js)
+//-   lang — resolved locale tag for <html lang> and the browser scripts
+doctype html
+html(lang=lang)
+  head
+    meta(charset="UTF-8")
+    if csp
+      meta(http-equiv="Content-Security-Policy" content=csp)
+    meta(name="viewport" content="width=device-width, initial-scale=1.0")
+    title= t.app_title
+    link(rel="stylesheet" href=cssHref)
+  body
+    #toolbar
+      .brand
+        span.logo
+        | codegraph&nbsp;studio
+      span.sep
+      .grp(role="group" aria-label=t.a11y_grouping)
+        button#modeFiles.active(title=t.mode_files_title)= t.mode_files
+        button#modeFolders(title=t.mode_folders_title)= t.mode_folders
+      button#followMode.toggle(title=t.follow_title)= t.follow
+      button#lazyMode.toggle(title=t.lazy_title)= t.lazy
+      span.sep
+      button#showHidden(title=t.show_hidden_title)= t.show_hidden
+      button#hideIsolated.toggle(title=t.hide_isolated_title)= t.hide_isolated
+      span.sep
+      .grp(role="group" aria-label=t.a11y_view)
+        button#relayout(title=t.relayout_title)= t.relayout
+        button#fit(title=t.fit_title)= t.fit
+      if standalone
+        label.field.path-field(title=t.root_path_title)
+          svg(viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round")
+            path(d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z")
+          input#rootPath.path(type="text" spellcheck="false" placeholder=t.root_path_placeholder)
+        button#rebuild.primary(title=t.rebuild_title)= t.rebuild
+
+    canvas#canvas
+    #editors(aria-hidden="true")
+
+    #searchPanel.float-panel
+      label.field(title=t.search_title)
+        svg(viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round")
+          circle(cx="11" cy="11" r="8")
+          path(d="m21 21-4.3-4.3")
+        input#search(type="search" placeholder=t.search_placeholder)
+      label.field(title=t.filter_title)
+        svg(viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round")
+          polygon(points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3")
+        input#filter(type="text" spellcheck="false" placeholder=t.filter_placeholder)
+
+    #cardPanel.float-panel
+      button#expandAll(title=t.expand_all_title)= t.expand_all
+      button#collapseAll(title=t.collapse_all_title)= t.collapse_all
+
+    #infobar.info-bar
+      span#stats= t.stats_loading
+
+    button#legendToggle.legend-toggle(type="button" title=t.legend_toggle_title aria-controls="hint" aria-expanded="false")
+      svg(viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true")
+        circle(cx="12" cy="12" r="10")
+        path(d="M12 16v-4")
+        path(d="M12 8h.01")
+
+    #hint.legend(hidden)
+      span
+        b= t.legend_wheel_k
+        = t.legend_wheel_v
+      span
+        b= t.legend_bg_k
+        = t.legend_bg_v
+      span
+        b= t.legend_node_k
+        = t.legend_node_v
+      span
+        b= t.legend_folder_k
+        = t.legend_folder_v
+      span
+        b= t.legend_shift_k
+        = t.legend_shift_v
+      span
+        b= t.legend_follow_k
+        = t.legend_follow_v
+      span
+        b= t.legend_lazy_k
+        = t.legend_lazy_v
+      if !standalone
+        span
+          b= t.legend_edit_k
+          = t.legend_edit_v
+
+    #loading.loading-overlay(hidden aria-live="polite")
+      .spinner(aria-hidden="true")
+      span.loading-label= t.analyzing
+
+    if !standalone
+      #start.start-overlay(hidden)
+        .start-panel
+          h1.start-title= t.start_title
+          .start-actions
+            button#startAnalyze.primary(type="button")= t.start_analyze
+            button#startPick(type="button")= t.start_pick
+
+    #tooltip.tooltip(hidden)
+
+    //- Resolved messages for the browser scripts (viewer.js / editor.js).
+    //- Not executed (type=application/json); read via getElementById + JSON.parse.
+    script#cg-i18n(type="application/json")!= JSON.stringify(t)
+    script(nonce=nonce src=viewerSrc)
+    if editorSrc
+      script(nonce=nonce src=editorSrc)

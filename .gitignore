@@ -2,3 +2,4 @@ graph.json
 node_modules
 dist
 *.vsix
+src/extension/generated/

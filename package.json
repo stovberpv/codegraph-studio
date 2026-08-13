@@ -3,38 +3,93 @@
   "displayName": "Codegraph Studio",
   "version": "0.1.0",
   "private": true,
-  "publisher": "korak",
-  "description": "Дерево вызовов TypeScript на холсте с редактированием файлов в VS Code.",
+  "publisher": "stovberpv",
+  "description": "%codegraph.description%",
   "type": "module",
   "engines": {
     "vscode": "^1.85.0"
   },
   "categories": ["Other", "Visualization"],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/stovberpv/codegraph-studio.git"
+  },
+  "homepage": "https://github.com/stovberpv/codegraph-studio#readme",
+  "bugs": {
+    "url": "https://github.com/stovberpv/codegraph-studio/issues"
+  },
   "activationEvents": [],
   "main": "./dist/extension.cjs",
-  "files": [
-    "dist/extension.cjs",
-    "dist/webview/**/*",
-    "README.md"
-  ],
+  "l10n": "./l10n",
   "contributes": {
     "commands": [
       {
         "command": "codegraph.open",
-        "title": "Open Call Graph",
-        "category": "Codegraph Studio"
+        "title": "%codegraph.open.title%",
+        "category": "%codegraph.category%"
+      },
+      {
+        "command": "codegraph.rebuild",
+        "title": "%codegraph.rebuild.title%",
+        "category": "%codegraph.category%",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "codegraph.rebuildFrom",
+        "title": "%codegraph.rebuildFrom.title%",
+        "category": "%codegraph.category%",
+        "icon": "$(folder-opened)"
       }
-    ]
+    ],
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "codegraphStudio",
+          "title": "%codegraph.category%",
+          "icon": "media/codegraph.svg"
+        }
+      ]
+    },
+    "views": {
+      "codegraphStudio": [
+        {
+          "id": "codegraph.launch",
+          "name": "%codegraph.view.title%",
+          "type": "webview"
+        }
+      ]
+    },
+    "menus": {
+      "commandPalette": [
+        { "command": "codegraph.rebuild" },
+        { "command": "codegraph.rebuildFrom" }
+      ],
+      "editor/title": [
+        { "command": "codegraph.rebuild", "when": "activeWebviewPanelId == 'codegraph'", "group": "navigation@1" },
+        { "command": "codegraph.rebuildFrom", "when": "activeWebviewPanelId == 'codegraph'", "group": "navigation@2" }
+      ]
+    },
+    "configuration": {
+      "title": "%codegraph.category%",
+      "properties": {
+        "codegraph.debugParsePaths": {
+          "type": "boolean",
+          "default": false,
+          "description": "%codegraph.config.debugParsePaths.description%"
+        }
+      }
+    }
   },
   "bin": {
-    "codegraph-studio": "parse.ts"
+    "codegraph-studio": "src/core/parse.ts"
   },
   "scripts": {
-    "parse": "tsx parse.ts",
-    "serve": "tsx serve.ts",
-    "graph": "tsx parse.ts && tsx serve.ts",
-    "build": "node esbuild.mjs",
-    "watch": "node esbuild.mjs --watch",
+    "parse": "tsx src/core/parse.ts",
+    "serve": "tsx src/server/serve.ts",
+    "graph": "npm run build && tsx src/core/parse.ts && tsx src/server/serve.ts",
+    "build": "node scripts/esbuild.mjs",
+    "watch": "node scripts/esbuild.mjs --watch",
+    "typecheck": "tsc --noEmit",
     "package": "npm run build && vsce package --no-dependencies --allow-missing-repository"
   },
   "dependencies": {
@@ -52,6 +107,7 @@
     "@types/vscode": "^1.85.0",
     "@vscode/vsce": "^3.3.2",
     "esbuild": "^0.25.1",
+    "pug": "^3.0.3",
     "tsx": "^4.20.3"
   }
 }

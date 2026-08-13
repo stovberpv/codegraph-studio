@@ -1,7 +1,7 @@
 /**
- * CodeMirror 6 оверлеи поверх карточек файлов на холсте.
- * Общается с viewer через window.__cgEditor / window.__cgHost.
- * Бандлится esbuild в dist/webview/editor.js (IIFE).
+ * CodeMirror 6 overlays layered over file cards on the canvas.
+ * Talks to the viewer through window.__cgEditor / window.__cgHost.
+ * Bundled by esbuild into dist/webview/editor.js (IIFE).
  */
 import { EditorView, keymap, lineNumbers, highlightActiveLine } from "@codemirror/view";
 import { EditorState } from "@codemirror/state";
@@ -13,29 +13,72 @@ import { syntaxHighlighting, defaultHighlightStyle } from "@codemirror/language"
 const MAX_OPEN = 4;
 /** @type {Map<string, { el: HTMLElement, view: EditorView|null, dirty: boolean, path: string, openedAt: number }>} */
 const editors = new Map();
-/** очередь ожидающих fileContent */
+/** queue of paths awaiting fileContent */
 const pending = new Set();
 
+/** Resolved UI messages injected by the Pug template (#cg-i18n JSON island). */
+const CG_MSG = (() => {
+  try {
+    return JSON.parse(document.getElementById("cg-i18n")?.textContent || "{}") || {};
+  } catch {
+    return {};
+  }
+})();
+
+/**
+ * Looks up a localized string by key, filling `{name}` placeholders from `vars`.
+ * Why: the overlay shares the same message dictionary as the canvas viewer, so
+ * all UI text comes from one localized source.
+ */
+function t(key, vars) {
+  let s = CG_MSG[key] != null ? CG_MSG[key] : key;
+  if (vars) for (const k in vars) s = s.split("{" + k + "}").join(vars[k]);
+  return s;
+}
+
+/**
+ * Sends a message to the extension host if the bridge is available.
+ * Why: overlays run in both standalone and extension modes; in standalone there
+ * is no host, so posting is a no-op.
+ */
 function post(msg) {
   if (window.__cgHost && typeof window.__cgHost.postMessage === "function") {
     window.__cgHost.postMessage(msg);
   }
 }
 
+/**
+ * Returns the DOM layer that holds all editor overlays.
+ * Why: overlays are positioned absolutely inside this container.
+ */
 function layer() {
   return document.getElementById("editors");
 }
 
+/**
+ * Finds the viewer group (file card) for a given path.
+ * Why: overlays follow their card's geometry, which lives in the viewer state.
+ */
 function findGroup(path) {
   const cg = window.__cg;
   if (!cg || !cg.groups) return null;
   return cg.groups.find((g) => g.path === path) || null;
 }
 
+/**
+ * Requests a viewer repaint.
+ * Why: overlay changes (open/close/resize) alter card layout the canvas draws.
+ */
 function markViewerDirty() {
   if (window.__cg && typeof window.__cg.markDirty === "function") window.__cg.markDirty();
 }
 
+/**
+ * Toggles a card's editing state and resizes it to the editor dimensions.
+ * Why: the card must grow to host the editor and notify the viewer so layout
+ * and edges are recomputed; falls back to fixed sizes if the viewer helpers
+ * aren't present.
+ */
 function setEditing(g, on) {
   if (!g) return;
   g.editing = !!on;
@@ -48,6 +91,11 @@ function setEditing(g, on) {
   markViewerDirty();
 }
 
+/**
+ * Builds the overlay shell DOM (bar, title, status, buttons, body) for a path.
+ * Why: input events are stopped from reaching the canvas so typing/scrolling in
+ * the editor doesn't pan or zoom the graph; ⌘/Ctrl+S saves.
+ */
 function makeShell(path) {
   const el = document.createElement("div");
   el.className = "cg-editor";
@@ -56,14 +104,15 @@ function makeShell(path) {
     <div class="cg-editor-bar">
       <span class="cg-editor-title"></span>
       <span class="cg-editor-status"></span>
-      <button type="button" class="cg-editor-save" title="Сохранить (⌘/Ctrl+S)">сохранить</button>
-      <button type="button" class="cg-editor-close" title="Свернуть редактор">✕</button>
+      <button type="button" class="cg-editor-save" title="${t("ed_save_title")}">${t("ed_save")}</button>
+      <button type="button" class="cg-editor-close" title="${t("ed_close_title")}">✕</button>
     </div>
     <div class="cg-editor-body"></div>
+    <div class="cg-editor-resize" title="${t("ed_resize_title")}" aria-hidden="true"></div>
   `;
   el.querySelector(".cg-editor-title").textContent = path.split("/").pop() || path;
 
-  // не прокидывать зум/пан холста
+  // don't forward canvas zoom/pan events
   const stop = (e) => e.stopPropagation();
   for (const ev of ["wheel", "mousedown", "mouseup", "mousemove", "pointerdown", "pointerup", "click", "dblclick", "contextmenu", "touchstart", "touchmove"]) {
     el.addEventListener(ev, stop);
@@ -90,9 +139,56 @@ function makeShell(path) {
     close(path);
   });
 
+  attachResize(el, path);
+
   return el;
 }
 
+/**
+ * Wires the bottom-right grip so the user can drag the edit card to any size.
+ * Why: text often overflows the default size; screen-pixel deltas are converted
+ * to world units by the camera scale so the card resizes correctly at any zoom,
+ * and the new size is persisted (via the viewer) when the drag ends.
+ */
+function attachResize(el, path) {
+  const grip = el.querySelector(".cg-editor-resize");
+  if (!grip) return;
+  grip.addEventListener("pointerdown", (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const g = findGroup(path);
+    if (!g) return;
+    const scale = window.__cg?.cam?.scale || 1;
+    const startX = e.clientX;
+    const startY = e.clientY;
+    const startW = g.editW || 520;
+    const startH = g.editH || 380;
+    try {
+      grip.setPointerCapture(e.pointerId);
+    } catch {
+      /* pointer capture unsupported — dragging still works */
+    }
+    const onMove = (ev) => {
+      const w = startW + (ev.clientX - startX) / scale;
+      const h = startH + (ev.clientY - startY) / scale;
+      window.__cg?.setEditorSize?.(g, w, h, false);
+    };
+    const onUp = () => {
+      grip.removeEventListener("pointermove", onMove);
+      grip.removeEventListener("pointerup", onUp);
+      grip.removeEventListener("pointercancel", onUp);
+      window.__cg?.setEditorSize?.(g, g.editW, g.editH, true);
+    };
+    grip.addEventListener("pointermove", onMove);
+    grip.addEventListener("pointerup", onUp);
+    grip.addEventListener("pointercancel", onUp);
+  });
+}
+
+/**
+ * Sets the status text (and kind) shown in an overlay's bar.
+ * Why: communicates load/dirty/saved/error state to the user via a data-kind.
+ */
 function setStatus(ed, text, kind) {
   const st = ed.el.querySelector(".cg-editor-status");
   if (!st) return;
@@ -100,11 +196,16 @@ function setStatus(ed, text, kind) {
   st.dataset.kind = kind || "";
 }
 
+/**
+ * Opens (or focuses) an editor overlay for a file card.
+ * Why: enforces a max of MAX_OPEN overlays by evicting the oldest, then requests
+ * the file content from the host and mounts the view once it arrives.
+ */
 function open(g) {
   if (!g || !g.path) return;
   const path = g.path;
   if (editors.has(path)) {
-    // уже открыт — фокус
+    // already open — focus it
     const ed = editors.get(path);
     ed.openedAt = Date.now();
     if (ed.view) ed.view.focus();
@@ -113,7 +214,7 @@ function open(g) {
     return;
   }
 
-  // лимит: закрыть самый старый
+  // limit: close the oldest
   while (editors.size >= MAX_OPEN) {
     let oldest = null;
     let oldestAt = Infinity;
@@ -133,12 +234,17 @@ function open(g) {
   root.appendChild(el);
   editors.set(path, { el, view: null, dirty: false, path, openedAt: Date.now() });
   setEditing(g, true);
-  setStatus(editors.get(path), "загрузка…", "muted");
+  setStatus(editors.get(path), t("ed_loading"), "muted");
   pending.add(path);
   post({ type: "openFile", path });
   sync();
 }
 
+/**
+ * Creates the CodeMirror EditorView for a path with the given text.
+ * Why: builds the editor with TS syntax highlighting, dark theme and a dirty
+ * listener; recreates the view if one already exists for the path.
+ */
 function mountView(path, text) {
   const ed = editors.get(path);
   if (!ed) return;
@@ -161,7 +267,7 @@ function mountView(path, text) {
       EditorView.updateListener.of((u) => {
         if (u.docChanged) {
           ed.dirty = true;
-          setStatus(ed, "• изменено", "dirty");
+          setStatus(ed, t("ed_changed"), "dirty");
         }
       }),
       EditorView.theme({
@@ -177,6 +283,10 @@ function mountView(path, text) {
   pending.delete(path);
 }
 
+/**
+ * Sends the current editor contents to the host to be saved.
+ * Why: persistence happens host-side (WorkspaceEdit); this posts the text.
+ */
 function save(path) {
   const ed = editors.get(path);
   if (!ed || !ed.view) return;
@@ -185,6 +295,10 @@ function save(path) {
   post({ type: "saveFile", path, text });
 }
 
+/**
+ * Closes an overlay, destroys its view and clears the card's editing state.
+ * Why: releases the CodeMirror instance and restores the card to normal size.
+ */
 function close(path) {
   const ed = editors.get(path);
   if (!ed) return;
@@ -200,31 +314,48 @@ function close(path) {
   sync();
 }
 
+/**
+ * Closes every open overlay.
+ * Why: used when the graph reloads so stale editors don't linger.
+ */
 function closeAll() {
   for (const p of [...editors.keys()]) close(p);
 }
 
+/**
+ * Handles a fileContent message by mounting the editor view.
+ * Why: content arrives asynchronously after an openFile request.
+ */
 function onFileContent(msg) {
   if (!msg || !msg.path) return;
   if (!editors.has(msg.path)) return;
   mountView(msg.path, msg.text);
 }
 
+/**
+ * Handles a saved acknowledgement: clears dirty state and shows a brief note.
+ * Why: gives the user feedback and auto-hides the status after a moment.
+ */
 function onSaved(msg) {
   const ed = editors.get(msg.path);
   if (!ed) return;
   ed.dirty = false;
-  setStatus(ed, "сохранено", "ok");
+  setStatus(ed, t("ed_saved"), "ok");
   setTimeout(() => {
     if (editors.get(msg.path) === ed && !ed.dirty) setStatus(ed, "", "");
   }, 1200);
 }
 
+/**
+ * Handles an externalChange message (the file was saved on disk elsewhere).
+ * Why: refreshes the editor with the new text unless it has unsaved edits, in
+ * which case it warns instead of clobbering the user's work.
+ */
 function onExternalChange(msg) {
   const ed = editors.get(msg.path);
   if (!ed || !ed.view) return;
   if (ed.dirty) {
-    setStatus(ed, "файл изменён снаружи", "warn");
+    setStatus(ed, t("ed_external"), "warn");
     return;
   }
   const cur = ed.view.state.doc.toString();
@@ -233,12 +364,13 @@ function onExternalChange(msg) {
     changes: { from: 0, to: ed.view.state.doc.length, insert: msg.text ?? "" },
   });
   ed.dirty = false;
-  setStatus(ed, "обновлено", "muted");
+  setStatus(ed, t("ed_updated"), "muted");
 }
 
 /**
- * Позиционирует оверлеи по камере холста (scale с origin top-left).
- * Редактор занимает тело карточки под шапкой (HEADER_H = 24).
+ * Positions overlays according to the canvas camera (scale with top-left origin).
+ * The editor occupies the card body under the header (HEADER_H = 24).
+ * Why: keeps each overlay glued to its card as the user pans/zooms the graph.
  */
 function sync() {
   const HEADER_H = 24;
@@ -262,13 +394,17 @@ function sync() {
   }
 }
 
+/**
+ * Toggles the overlay for a card: closes it if open, opens it otherwise.
+ * Why: the card's edit control flips editing on and off through this.
+ */
 function toggle(g) {
   if (!g) return;
   if (g.editing && editors.has(g.path)) close(g.path);
   else open(g);
 }
 
-// публичный API для viewer.js
+// public API for viewer.js
 window.__cgEditor = {
   open,
   close,

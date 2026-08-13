@@ -8,7 +8,7 @@ body {
   height: 100%;
   overflow: hidden;
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  /* единый базовый размер шрифта для всего UI (шапка, панели, тултип) */
+  /* single base font size for the whole UI (toolbar, panels, tooltip) */
   font-size: 12px;
   line-height: 1.35;
   background: #0e1116;
@@ -33,7 +33,7 @@ body {
   backdrop-filter: blur(12px);
 }
 
-/* бренд + статистика */
+/* brand + stats */
 .brand {
   display: flex;
   align-items: center;
@@ -57,29 +57,28 @@ body {
   font-variant-numeric: tabular-nums;
 }
 
-/* разделители / распорка */
+/* separators / spacer */
 .sep {
   width: 1px;
   align-self: stretch;
   margin: 4px 3px;
   background: #262e39;
 }
-/* путь+пересобрать прижимаются вправо (в пределах своей строки при переносе) */
+/* path + rebuild pinned to the right (within their row when wrapped) */
 .path-field {
   margin-left: auto;
 }
 
-/* всё, кроме полей-инпутов и распорки, не сжимается */
+/* everything except input fields and the spacer does not shrink */
 .brand,
 .stats,
 .sep,
-.chk,
 .grp,
 #toolbar > button {
   flex: none;
 }
 
-/* поля ввода с иконкой */
+/* input fields with an icon */
 .field {
   display: flex;
   align-items: center;
@@ -120,7 +119,7 @@ body {
   min-width: 110px;
 }
 
-/* плавающие плашки поверх холста */
+/* floating panels over the canvas */
 .float-panel {
   position: fixed;
   z-index: 6;
@@ -152,7 +151,7 @@ body {
   width: 100%;
 }
 
-/* info-bar счётчиков (справа внизу) */
+/* counters info-bar (bottom right) */
 .info-bar {
   position: fixed;
   right: 12px;
@@ -170,25 +169,7 @@ body {
   white-space: nowrap;
 }
 
-/* чекбокс-тоггл */
-.chk {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  color: #9aa7b4;
-  cursor: pointer;
-  user-select: none;
-  white-space: nowrap;
-  padding: 0 4px;
-}
-.chk input {
-  accent-color: #3d7de6;
-  width: 14px;
-  height: 14px;
-  cursor: pointer;
-}
-
-/* кнопки */
+/* buttons */
 button {
   height: 32px;
   padding: 0 12px;
@@ -228,7 +209,7 @@ button.toggle.active {
   color: #e6edf3;
 }
 
-/* сегментированная группа кнопок */
+/* segmented button group */
 .grp {
   display: flex;
   align-items: center;
@@ -249,11 +230,12 @@ button.toggle.active {
   background: #232c37;
 }
 
-/* легенда управления поверх холста */
+/* controls legend over the canvas — collapsed into the "i" toggle by default,
+   expands just above the toggle button so it never eats canvas space idle */
 .legend {
   position: fixed;
   left: 14px;
-  bottom: 12px;
+  bottom: 54px;
   display: flex;
   flex-wrap: wrap;
   gap: 4px 14px;
@@ -268,9 +250,44 @@ button.toggle.active {
   pointer-events: none;
   backdrop-filter: blur(6px);
 }
+.legend[hidden] {
+  display: none;
+}
 .legend b {
   color: #9aa7b4;
   font-weight: 600;
+}
+
+/* "i" toggle for the controls legend (lucide info) */
+.legend-toggle {
+  position: fixed;
+  left: 14px;
+  bottom: 12px;
+  z-index: 6;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #8b97a4;
+  background: rgba(17, 21, 28, 0.66);
+  border: 1px solid #232a33;
+  border-radius: 9px;
+  backdrop-filter: blur(6px);
+}
+.legend-toggle svg {
+  width: 16px;
+  height: 16px;
+}
+.legend-toggle:hover {
+  color: #e6edf3;
+  background: #232c37;
+  border-color: #3a4552;
+}
+.legend-toggle.active {
+  color: #9ec0ff;
+  border-color: #3d7de6;
 }
 
 #canvas {
@@ -289,7 +306,7 @@ button.toggle.active {
   cursor: move;
 }
 
-/* слой оверлеев редакторов — совпадает с canvas, pointer-events только у детей */
+/* editor overlay layer — matches the canvas; pointer-events only on children */
 #editors {
   position: fixed;
   top: var(--toolbar-h, 52px);
@@ -358,6 +375,34 @@ button.toggle.active {
 .cg-editor-body .cm-editor {
   height: 100%;
 }
+/* bottom-right grip to drag the edit card to any size */
+.cg-editor-resize {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  width: 16px;
+  height: 16px;
+  cursor: nwse-resize;
+  touch-action: none;
+  background: linear-gradient(
+    135deg,
+    transparent 0 50%,
+    #5b6672 50% 62%,
+    transparent 62% 74%,
+    #5b6672 74% 86%,
+    transparent 86%
+  );
+}
+.cg-editor-resize:hover {
+  background: linear-gradient(
+    135deg,
+    transparent 0 50%,
+    #8b97a4 50% 62%,
+    transparent 62% 74%,
+    #8b97a4 74% 86%,
+    transparent 86%
+  );
+}
 
 .tooltip {
   position: fixed;
@@ -374,4 +419,91 @@ button.toggle.active {
 }
 .tooltip .muted {
   color: #7d8b9a;
+}
+
+/* loading overlay — indeterminate spinner shown while a parse is in flight.
+   Sits above the canvas but below the toolbar; never traps input. */
+.loading-overlay {
+  position: fixed;
+  top: var(--toolbar-h, 52px);
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 8;
+  pointer-events: none;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  background: rgba(14, 17, 22, 0.35);
+  backdrop-filter: blur(1px);
+}
+.loading-overlay[hidden] {
+  display: none;
+}
+
+/* Start screen: centered CTAs until the user picks a root (extension only). */
+.start-overlay {
+  position: fixed;
+  top: var(--toolbar-h, 52px);
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 8;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(14, 17, 22, 0.55);
+  backdrop-filter: blur(2px);
+}
+.start-overlay[hidden] {
+  display: none;
+}
+.start-panel {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 18px;
+  padding: 28px 32px;
+}
+.start-title {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: #e6edf3;
+}
+.start-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+}
+.start-actions button {
+  min-width: 180px;
+}
+.loading-overlay .spinner {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  border: 3px solid #232a33;
+  border-top-color: #3d7de6;
+  animation: cg-spin 0.8s linear infinite;
+}
+.loading-overlay .loading-label {
+  color: #8b97a4;
+  font-size: 11px;
+  letter-spacing: 0.02em;
+}
+@keyframes cg-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .loading-overlay .spinner {
+    animation-duration: 2s;
+  }
 }

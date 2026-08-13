@@ -1,0 +1,11 @@
+{
+  "Codegraph Studio: open a project folder (File → Open Folder).": "Codegraph Studio: open a project folder (File → Open Folder).",
+  "path not found or not a folder: {0}": "path not found or not a folder: {0}",
+  "could not read {0}": "could not read {0}",
+  "could not apply edit: {0}": "could not apply edit: {0}",
+  "parsing: {0}": "parsing: {0}",
+  "Parse folder": "Parse folder",
+  "Codegraph Studio: analyzing {0}…": "Codegraph Studio: analyzing {0}…",
+  "found {0} files…": "found {0} files…",
+  "parsing {0}/{1} files…": "parsing {0}/{1} files…"
+}
