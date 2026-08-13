@@ -20,6 +20,14 @@ import {
 import { dirname, hashHue, splitName, textWidth } from "./utils.js";
 import { applySize } from "./sizing.js";
 import { buildFolders } from "./folders.js";
+import { detectCommunities } from "./community.js";
+import { applyCollisionShift, forceLayout, resolveCollisions } from "./force.js";
+
+// Resolution for files-mode community detection: higher → more, smaller islands.
+// 1.5 gave the most balanced archipelago on codebase-like graphs (see benchmark).
+const COMMUNITY_RESOLUTION = 1.5;
+
+export { applyCollisionShift, forceLayout, resolveCollisions };
 
 /** Rebuild file cards from nodes and run force/folder layout. */
 export function layout() {
@@ -115,7 +123,15 @@ export function layout() {
     const connected = state.groups.filter((g) => g.linked);
     const isolated = state.groups.filter((g) => !g.linked);
 
-    if (connected.length) forceLayout(connected, links);
+    // Islands, not one globe: cluster files by call-graph community, then run the
+    // two-level island layout on those communities. A flat force layout always
+    // collapses to a single blob (one gravity center); clustering first is what
+    // makes folder mode read as separate islands — here the clusters come from
+    // actual connectivity instead of directory paths.
+    if (connected.length) {
+      const comm = detectCommunities(connected, links, COMMUNITY_RESOLUTION);
+      clusterIslands(connected, links, (g) => "c" + comm.get(g));
+    }
 
     // bbox of the connected core
     let minX = 0, minY = 0, maxX = 0, maxY = 0;
@@ -163,19 +179,32 @@ export function layout() {
   markDirty();
 }
 
-// Two-level layout: gravity inside a folder → gravity between folders.
+// Folder mode: two-level island layout keyed by directory.
 /** Two-level force layout: pack files inside folders, then place folder boxes. */
 function folderLayout(gs, links) {
-  const byFolder = new Map();
+  clusterIslands(gs, links, (g) => g.folder);
+}
+
+// Generic two-level "island" layout: pack each cluster with a tight local force
+// layout, freeze it into a rigid box, then lay out the sparse box-to-box graph
+// with strong repulsion + long springs + weak gravity so clusters spread into
+// separate islands instead of a single blob. `keyOf(group)` decides the cluster
+// each file belongs to — the directory in folder mode, a call-graph community in
+// files mode. Only positions (cx/cy); rendering of folder islands is derived
+// later and gated to folder mode (see folders.js).
+/** Cluster files by `keyOf`, lay each out locally, then separate the clusters. */
+function clusterIslands(gs, links, keyOf) {
+  const byKey = new Map();
   for (const g of gs) {
-    if (!byFolder.has(g.folder)) byFolder.set(g.folder, []);
-    byFolder.get(g.folder).push(g);
+    const key = keyOf(g);
+    if (!byKey.has(key)) byKey.set(key, []);
+    byKey.get(key).push(g);
   }
 
-  // 1) inside each folder — compact local forceLayout
+  // 1) inside each cluster — compact local forceLayout
   // (tight params: weak repulsion, short springs, strong centering)
   const INNER = { chargeScale: 20, springRestExtra: 16, centerK: 0.09, springK: 0.16, iterations: 320, spreadK: 0.7 };
-  for (const [, list] of byFolder) {
+  for (const [key, list] of byKey) {
     if (list.length === 1) {
       list[0].cx = 0;
       list[0].cy = 0;
@@ -183,17 +212,17 @@ function folderLayout(gs, links) {
       list[0].vy = 0;
       continue;
     }
-    const localLinks = links.filter((l) => l.a.folder === list[0].folder && l.b.folder === list[0].folder);
+    const localLinks = links.filter((l) => keyOf(l.a) === key && keyOf(l.b) === key);
     forceLayout(list, localLinks, INNER);
   }
 
-  // 2) each folder's bbox (local coords) → rigid island box.
-  // FOLDER_MARGIN gives breathing room so folders do not merge.
-  const FOLDER_MARGIN = 64;
+  // 2) each cluster's bbox (local coords) → rigid island box.
+  // ISLAND_MARGIN gives breathing room so clusters do not merge.
+  const ISLAND_MARGIN = 64;
   const LABEL_H = 22;
-  const folders = [];
-  const folderByKey = new Map();
-  for (const [key, list] of byFolder) {
+  const islands = [];
+  const islandByKey = new Map();
+  for (const [key, list] of byKey) {
     let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
     for (const g of list) {
       minX = Math.min(minX, g.cx - g.w / 2);
@@ -210,8 +239,8 @@ function folderLayout(gs, links) {
       list,
       hue: hashHue(key),
       // box size = cluster bounds + padding on all sides (+ room for a label)
-      w: maxX - minX + FOLDER_MARGIN * 2,
-      h: maxY - minY + FOLDER_MARGIN * 2 + LABEL_H,
+      w: maxX - minX + ISLAND_MARGIN * 2,
+      h: maxY - minY + ISLAND_MARGIN * 2 + LABEL_H,
       localMidX: (minX + maxX) / 2,
       localMidY: (minY + maxY) / 2,
       cx: 0,
@@ -220,43 +249,46 @@ function folderLayout(gs, links) {
       vy: 0,
       linked: false,
     };
-    folders.push(f);
-    folderByKey.set(key, f);
+    islands.push(f);
+    islandByKey.set(key, f);
   }
 
-  // 3) cross-folder links (weight = sum of cross-file links between folders)
-  const folderLinks = [];
-  const flMap = new Map();
+  // 3) cross-cluster links (weight = sum of cross-file links between clusters)
+  const islandLinks = [];
+  const ilMap = new Map();
   for (const l of links) {
-    if (l.a.folder === l.b.folder) continue;
-    const ka = l.a.folder;
-    const kb = l.b.folder;
+    const ka = keyOf(l.a);
+    const kb = keyOf(l.b);
+    if (ka === kb) continue;
     const key = ka < kb ? ka + "\u0000" + kb : kb + "\u0000" + ka;
-    flMap.set(key, (flMap.get(key) || 0) + l.w);
+    ilMap.set(key, (ilMap.get(key) || 0) + l.w);
   }
-  for (const [key, w] of flMap) {
+  for (const [key, w] of ilMap) {
     const [a, b] = key.split("\u0000");
-    const fa = folderByKey.get(a);
-    const fb = folderByKey.get(b);
+    const fa = islandByKey.get(a);
+    const fb = islandByKey.get(b);
     if (fa && fb) {
-      folderLinks.push({ a: fa, b: fb, w });
+      islandLinks.push({ a: fa, b: fb, w });
       fa.linked = true;
       fb.linked = true;
     }
   }
 
-  // 4) layout folder boxes: attraction between linked ones + hard
-  //    separation (boxes do not overlap; COLLIDE_GAP between them)
-  if (folders.length === 1) {
-    folders[0].cx = 0;
-    folders[0].cy = 0;
+  // 4) layout island boxes: attraction between linked ones + hard separation
+  //    (boxes do not overlap; COLLIDE_GAP between them). The cluster graph is
+  //    sparse, so it lays out as genuine islands — strong repulsion + long
+  //    springs + weak gravity spread clusters apart into readable islands
+  //    instead of a central clump. hubMaxExp keeps hub clusters off dead-center.
+  if (islands.length === 1) {
+    islands[0].cx = 0;
+    islands[0].cy = 0;
   } else {
-    forceLayout(folders, folderLinks, { chargeScale: 42, springRestExtra: 60, centerK: 0.01, springK: 0.06 });
-    resolveCollisions(folders, 300); // guarantee islands are separated
+    forceLayout(islands, islandLinks, { chargeScale: 130, springRestExtra: 180, centerK: 0.006, springK: 0.05 });
+    resolveCollisions(islands, 300); // guarantee islands are separated
   }
 
-  // 5) shift each folder's cards as a rigid body to its box center
-  for (const f of folders) {
+  // 5) shift each cluster's cards as a rigid body to its box center
+  for (const f of islands) {
     const dx = f.cx - f.localMidX;
     const dy = f.cy - f.localMidY;
     for (const g of f.list) {
@@ -266,9 +298,9 @@ function folderLayout(gs, links) {
       g.vy = 0;
     }
   }
-  // intentionally do NOT call global resolveCollisions on cards —
-  // it would scramble folders; inside a folder overlaps are gone (step 1),
-  // and between folders too (step 4).
+  // intentionally do NOT call global resolveCollisions on cards — it would
+  // scramble clusters; overlaps are already gone inside (step 1) and between
+  // (step 4) islands.
 }
 
 // Lay out functions inside an expanded card (vertical list).
@@ -285,184 +317,3 @@ export function layoutInner(g) {
   }
 }
 
-// Force-directed on cards: repulsion + springs + weak centering,
-// plus hard AABB collision separation. Tuned for "islands": strong
-// repulsion and long springs give air; weak gravity avoids collapsing into a blob.
-/** Force-directed layout with repulsion, springs, centering, and AABB separation. */
-export function forceLayout(gs, links, opts) {
-  const n = gs.length;
-  if (!n) return;
-  opts = opts || {};
-
-  // degree of each card (cross-file link count) —
-  // used to weaken pull toward hubs and avoid collapsing everything into a core
-  const deg = new Map();
-  for (const l of links) {
-    deg.set(l.a, (deg.get(l.a) || 0) + 1);
-    deg.set(l.b, (deg.get(l.b) || 0) + 1);
-  }
-
-  const spreadK = opts.spreadK != null ? opts.spreadK : 1.4;
-  const spread = Math.sqrt(gs.reduce((s, g) => s + g.w * g.h, 0)) * spreadK;
-  for (let i = 0; i < n; i++) {
-    const g = gs[i];
-    const ang = i * 2.399963229728653;
-    const r = Math.sqrt((i + 0.5) / n) * spread;
-    g.cx = Math.cos(ang) * r;
-    g.cy = Math.sin(ang) * r;
-    g.vx = 0;
-    g.vy = 0;
-  }
-
-  const iterations = opts.iterations != null ? opts.iterations : 440;
-  const velocityDecay = 0.62;
-  const centerK = opts.centerK != null ? opts.centerK : 0.004; // gravity toward center
-  const springK = opts.springK != null ? opts.springK : 0.08;
-  const springRestExtra = opts.springRestExtra != null ? opts.springRestExtra : 120; // spring rest length
-  const chargeScale = opts.chargeScale != null ? opts.chargeScale : 170; // repulsion strength
-  const maxStep = Math.max(80, spread * 0.035);
-
-  let alpha = 1;
-  const alphaDecay = 1 - Math.pow(0.001, 1 / iterations);
-
-  for (let it = 0; it < iterations; it++) {
-    alpha *= 1 - alphaDecay;
-
-    for (let i = 0; i < n; i++) {
-      const gi = gs[i];
-      for (let j = i + 1; j < n; j++) {
-        const gj = gs[j];
-        let dx = gj.cx - gi.cx;
-        let dy = gj.cy - gi.cy;
-        let d2 = dx * dx + dy * dy;
-        if (d2 < 1) {
-          dx = (i - j) || 1;
-          dy = (j - i) || 1;
-          d2 = dx * dx + dy * dy;
-        }
-        const strength = ((gi.w + gi.h) * (gj.w + gj.h) * chargeScale) / d2;
-        const dist = Math.sqrt(d2);
-        const fx = (dx / dist) * strength * alpha;
-        const fy = (dy / dist) * strength * alpha;
-        gi.vx -= fx;
-        gi.vy -= fy;
-        gj.vx += fx;
-        gj.vy += fy;
-      }
-    }
-
-    for (const l of links) {
-      const a = l.a;
-      const b = l.b;
-      let dx = b.cx - a.cx;
-      let dy = b.cy - a.cy;
-      const dist = Math.hypot(dx, dy) || 1;
-      const rest = (a.w + a.h) / 2 + (b.w + b.h) / 2 + springRestExtra;
-      // divide attraction by sqrt(min-degree): hub links pull weakly,
-      // links inside a small group pull strongly → islands form
-      const hub = Math.sqrt(Math.min(deg.get(a) || 1, deg.get(b) || 1));
-      const k = (springK * Math.min(l.w, 24) * alpha) / hub;
-      const disp = (dist - rest) * k;
-      const fx = (dx / dist) * disp;
-      const fy = (dy / dist) * disp;
-      a.vx += fx;
-      a.vy += fy;
-      b.vx -= fx;
-      b.vy -= fy;
-    }
-
-    for (let i = 0; i < n; i++) {
-      const g = gs[i];
-      g.vx -= g.cx * centerK * alpha;
-      g.vy -= g.cy * centerK * alpha;
-    }
-
-    for (let i = 0; i < n; i++) {
-      const g = gs[i];
-      g.vx *= velocityDecay;
-      g.vy *= velocityDecay;
-      const sp = Math.hypot(g.vx, g.vy);
-      if (sp > maxStep) {
-        g.vx = (g.vx / sp) * maxStep;
-        g.vy = (g.vy / sp) * maxStep;
-      }
-      g.cx += g.vx;
-      g.cy += g.vy;
-      if (!Number.isFinite(g.cx) || !Number.isFinite(g.cy)) {
-        g.cx = 0;
-        g.cy = 0;
-        g.vx = 0;
-        g.vy = 0;
-      }
-    }
-
-    resolveCollisions(gs, 2);
-  }
-
-  resolveCollisions(gs, 24);
-}
-
-// Separate overlapping AABB boxes along the axis of least penetration.
-// pinned (Set) — do not move these cards (only their neighbors).
-/** Push overlapping AABB boxes apart along the shallowest penetration axis. */
-export function resolveCollisions(gs, passes, pinned) {
-  const n = gs.length;
-  const gap = COLLIDE_GAP;
-  for (let p = 0; p < passes; p++) {
-    let moved = false;
-    for (let i = 0; i < n; i++) {
-      const gi = gs[i];
-      for (let j = i + 1; j < n; j++) {
-        const gj = gs[j];
-        const dx = gj.cx - gi.cx;
-        const dy = gj.cy - gi.cy;
-        const ox = (gi.w + gj.w) / 2 + gap - Math.abs(dx);
-        const oy = (gi.h + gj.h) / 2 + gap - Math.abs(dy);
-        if (ox > 0 && oy > 0) {
-          moved = true;
-          const pi = pinned && pinned.has(gi);
-          const pj = pinned && pinned.has(gj);
-          if (pi && pj) continue;
-          if (ox < oy) {
-            const s = ox * (dx < 0 ? -1 : 1);
-            if (pi) gj.cx += s;
-            else if (pj) gi.cx -= s;
-            else {
-              gi.cx -= s / 2;
-              gj.cx += s / 2;
-            }
-          } else {
-            const s = oy * (dy < 0 ? -1 : 1);
-            if (pi) gj.cy += s;
-            else if (pj) gi.cy -= s;
-            else {
-              gi.cy -= s / 2;
-              gj.cy += s / 2;
-            }
-          }
-        }
-      }
-    }
-    if (!moved) break;
-  }
-}
-
-// Convert new centers (cx/cy) to top-left (x/y) and shift the card's functions
-// by the same delta — to keep their offsets relative to the file.
-/** Sync top-left from centers and move child functions by the same delta. */
-export function applyCollisionShift(gs) {
-  for (const g of gs) {
-    const nx = g.cx - g.w / 2;
-    const ny = g.cy - g.h / 2;
-    const dx = nx - g.x;
-    const dy = ny - g.y;
-    if (dx || dy) {
-      g.x = nx;
-      g.y = ny;
-      for (const n of g.ids) {
-        n.x += dx;
-        n.y += dy;
-      }
-    }
-  }
-}

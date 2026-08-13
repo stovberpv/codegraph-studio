@@ -18,9 +18,12 @@ src/
     index.js                       #   entry: render loop, resize, load(), __cg hook
     state.js constants.js dom.js i18n.js  # foundations (shared state + tokens + refs)
     utils.js visibility.js glob-filter.js icons.js folders.js  # helpers & geometry
+    edited.js                       #   edited-file tracking (persisted + live dirty)
+    force.js quadtree.js            #   Barnes-Hut + grid force layout (near-linear)
     io.js persistence.js sizing.js layout.js edges.js fit.js edge-geometry.js
     render.js hit-test.js collapse.js interaction.js search-controls.js
-    legend.js rebuild.js           #   feature modules (one per former section)
+    legend.js rebuild.js menus.js heavy.js  #   feature modules (menus.js: corner
+                                   #   control menus; heavy.js: processing toast)
   webview/editor-overlay.js        # CodeMirror overlays
   webview/styles.css               # styles
 scripts/esbuild.mjs                # build: bundle + precompile Pug + render html
@@ -38,7 +41,22 @@ dist/                              # generated build output
   ES modules (entry `viewer/index.js`) bundled by esbuild into a single
   `dist/webview/viewer.js` IIFE, mirroring `editor-overlay.js`. Reassignable
   scene state is centralized in `viewer/state.js`. Both runtimes render from the
-  same Pug template.
+  same Pug template. The force layout (`viewer/force.js`) is near-linear —
+  Barnes-Hut repulsion via a quadtree (`viewer/quadtree.js`) and uniform-grid
+  collision separation — so graphs with thousands of cards lay out in bounded
+  time instead of the old all-pairs O(n²) freeze. Iteration count, the Barnes-Hut
+  angle, repulsion strength, and center gravity all scale with card count so dense
+  graphs breathe out. A flat force layout of a whole codebase still collapses into
+  one "ball of mud" though — a single gravity center has nothing to separate — so
+  **both layout modes cluster first, then lay out the sparse cluster graph as
+  islands** (`clusterIslands` in `viewer/layout.js`): pack each cluster with a
+  tight local layout, freeze it into a rigid box, then spread the boxes apart with
+  strong repulsion + long springs + weak gravity. Folder mode clusters by
+  directory; **files mode clusters by call-graph community** (Louvain modularity in
+  `viewer/community.js`), so files that call each other form an island regardless
+  of folder. `forceLayout` also offers opt-in **degree-scaled repulsion**
+  (`chargeDegExp`, `gravityDegDamp`) for hub-aware spreading, and weakens hub
+  files' spring pull (`hubMaxExp`) so barrels/utils don't pin the graph.
 - **`src/server/serve.ts`** — standalone static server plus `POST /api/rebuild`.
 - **`src/extension/extension.ts` + `src/webview/editor-overlay.js`** — the VS Code
   host and the CodeMirror overlays; bundled by `scripts/esbuild.mjs`. The
@@ -69,11 +87,17 @@ extension-only; standalone mode has no worker and no channel.
 
 ```bash
 npm install
-npm run build     # bundle host + webview into dist/
-npm run watch     # rebuild on change
-npm run package   # build a .vsix
-npm run graph     # standalone: parse + serve
+npm run build      # bundle host + webview into dist/ (readable, with sourcemaps)
+npm run build:prod # minified bundles, no sourcemaps (what packaging uses)
+npm run watch      # rebuild on change
+npm run package    # build:prod + build a .vsix
+npm run graph      # standalone: parse + serve
 ```
+
+Production bundles are minified (`--minify`): `parse-worker.cjs` bundles the
+TypeScript compiler, so minifying roughly halves it (~9.5mb → ~3.4mb). Prod skips
+sourcemaps (they never ship — `.vscodeignore` drops `*.map`) and keeps third-party
+license notices at end-of-file (`legalComments: "eof"`).
 
 Edit the source files, not `dist/**` (generated). See the docs below for the
 contracts that keep the two runtimes in sync.
