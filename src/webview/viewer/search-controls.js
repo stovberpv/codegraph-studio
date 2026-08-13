@@ -13,6 +13,7 @@ import {
   modeFilesEl,
   modeFoldersEl,
   searchEl,
+  zenModeEl,
 } from "./dom.js";
 import { state, cam, nodes, markDirty } from "./state.js";
 import { nodeVisible } from "./visibility.js";
@@ -22,6 +23,8 @@ import { layout } from "./layout.js";
 import { fit } from "./fit.js";
 import { rebuildRenderEdges } from "./edges.js";
 import { setAllExpanded, showAllHidden } from "./collapse.js";
+import { runHeavy } from "./heavy.js";
+import { t } from "./i18n.js";
 
 searchEl.addEventListener("input", () => {
   const q = searchEl.value.trim().toLowerCase();
@@ -77,6 +80,7 @@ function renderToolbar() {
   if (followModeEl) followModeEl.classList.toggle("active", state.followMode);
   if (lazyModeEl) lazyModeEl.classList.toggle("active", state.lazyMode);
   if (hideIsolatedEl) hideIsolatedEl.classList.toggle("active", state.hideIsolated);
+  if (zenModeEl) zenModeEl.classList.toggle("active", state.zenMode);
 }
 ui.subscribe(renderToolbar);
 
@@ -96,8 +100,16 @@ export function setLayoutMode(mode) {
   saveLayout();
   fit();
 }
-if (modeFilesEl) modeFilesEl.addEventListener("click", () => setLayoutMode("files"));
-if (modeFoldersEl) modeFoldersEl.addEventListener("click", () => setLayoutMode("folder"));
+if (modeFilesEl) {
+  modeFilesEl.addEventListener("click", () => {
+    if (state.layoutMode !== "files") runHeavy(t("busy_mode_files"), () => setLayoutMode("files"));
+  });
+}
+if (modeFoldersEl) {
+  modeFoldersEl.addEventListener("click", () => {
+    if (state.layoutMode !== "folder") runHeavy(t("busy_mode_folders"), () => setLayoutMode("folder"));
+  });
+}
 syncModeButtons();
 
 /** Enable/disable follow mode (mutually exclusive with lazy mode). */
@@ -120,32 +132,46 @@ export function setLazyMode(on) {
   markDirty();
 }
 if (followModeEl) {
-  followModeEl.addEventListener("click", () => setFollowMode(!state.followMode));
+  followModeEl.addEventListener("click", () => runHeavy(t("busy_links"), () => setFollowMode(!state.followMode)));
 }
 if (lazyModeEl) {
-  lazyModeEl.addEventListener("click", () => setLazyMode(!state.lazyMode));
+  lazyModeEl.addEventListener("click", () => runHeavy(t("busy_links"), () => setLazyMode(!state.lazyMode)));
+}
+
+/** Toggle Zen mode: only edited files keep their color, the rest go gray. */
+export function setZenMode(on) {
+  state.zenMode = !!on;
+  ui.notify();
+  markDirty(); // recolor only — no relayout needed
+}
+if (zenModeEl) {
+  zenModeEl.addEventListener("click", () => setZenMode(!state.zenMode));
 }
 
 document.getElementById("relayout").addEventListener("click", () => {
-  clearSaved();
-  layout();
-  applyFilter();
-  fit();
+  runHeavy(t("busy_reset_layout"), () => {
+    clearSaved();
+    layout();
+    applyFilter();
+    fit();
+  });
 });
 document.getElementById("fit").addEventListener("click", fit);
 if (hideIsolatedEl) {
   hideIsolatedEl.addEventListener("click", () => {
-    state.hideIsolated = !state.hideIsolated;
-    ui.notify();
-    layout();
-    applySaved();
-    applyFilter();
-    fit();
+    runHeavy(t("busy_isolated"), () => {
+      state.hideIsolated = !state.hideIsolated;
+      ui.notify();
+      layout();
+      applySaved();
+      applyFilter();
+      fit();
+    });
   });
 }
 const expandAllEl = document.getElementById("expandAll");
 const collapseAllEl = document.getElementById("collapseAll");
-if (expandAllEl) expandAllEl.addEventListener("click", () => setAllExpanded(true));
-if (collapseAllEl) collapseAllEl.addEventListener("click", () => setAllExpanded(false));
+if (expandAllEl) expandAllEl.addEventListener("click", () => runHeavy(t("busy_expand_all"), () => setAllExpanded(true)));
+if (collapseAllEl) collapseAllEl.addEventListener("click", () => runHeavy(t("busy_collapse_all"), () => setAllExpanded(false)));
 const showHiddenEl = document.getElementById("showHidden");
-if (showHiddenEl) showHiddenEl.addEventListener("click", showAllHidden);
+if (showHiddenEl) showHiddenEl.addEventListener("click", () => runHeavy(t("busy_show_hidden"), showAllHidden));

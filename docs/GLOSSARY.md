@@ -21,8 +21,17 @@ comments, UI, and docs.
   by default, expandable to the function list.
 - **Folder / island** — in folder layout, a soft backdrop grouping the cards of
   one directory. Has its own header and controls; collapses to a compact card.
-- **Unit** — a focusable entity for follow/lazy modes: either a file group or a
-  collapsed folder card. Adjacency between units is `unitAdj`.
+- **Two-level (island) layout** — both layout modes avoid the "ball of mud" the
+  same way: cluster files, then spread the clusters apart as islands (pack each
+  cluster with a tight local layout, freeze it into a rigid box, then lay out the
+  sparse box-to-box graph with strong repulsion / long springs / weak gravity).
+  **Folder mode** clusters by directory (and draws the island backdrops);
+  **files mode** clusters by **call-graph community** (Louvain, `community.js`),
+  so files that call each other land on the same island regardless of directory,
+  and a repo-wide util no longer anchors the center of one globe.
+- **Unit** — a focusable entity for follow/lazy modes: a file group, a collapsed
+  folder card, or an expanded folder island (which focuses the whole folder).
+  Adjacency between file/collapsed-folder units is `unitAdj`.
 - **renderEdges** — edges aggregated for drawing; endpoints are nodes or cards.
 
 ## Controls & state
@@ -39,16 +48,35 @@ comments, UI, and docs.
 - **Layout mode** — `files` (force between cards) or `folder` (force within a
   directory, then between directories).
 - **Follow mode** — the whole map is visible; clicking a unit shows only it and
-  its direct neighbors; clicking the background restores the map.
+  its direct neighbors; clicking the background restores the map. Clicking a
+  folder (collapsed card or expanded island) follows the whole folder — its files
+  and their neighbors.
 - **Lazy observation** — all files stay visible but edges are hidden; clicking a
-  unit reveals just its incoming/outgoing edges.
+  unit reveals just its incoming/outgoing edges. Clicking a folder (collapsed card
+  or expanded island) reveals the folder's cross-folder edges.
+- **Zen mode** — a recolor-only toggle in the Focus group: edited files keep their
+  hue, every other card (and its functions) desaturates to gray. Orthogonal to
+  Follow/Lazy (combinable) and transient (not persisted).
 - **Glob filter** — show only paths matching a glob (`!` excludes); non-matches
   are hidden without relayout.
 
+## Edited files
+
+- **Edited file** — a file whose content actually **differs from its pristine
+  baseline** (the content captured the first time it was opened this session).
+  Tracking is content-based, not event-based: the mark is set when the on-disk
+  content (canvas save or external write → persisted per root in `localStorage`)
+  or the editor buffer (unsaved edits → session-only) diverges from the baseline,
+  and it is **cleared when the file is reverted** back to the original — so an
+  undo-then-save leaves no stale flag. Marked with a green **edited dot** in the
+  card's title row and kept colored in Zen mode.
+
 ## Extension terms
 
-- **Host** — the extension side (Node): command `codegraph.open`, file read,
-  save via `WorkspaceEdit`; delegates parsing to the parse worker.
+- **Host** — the extension side (Node): command `codegraph.open`; opens files via
+  `openTextDocument`, mirrors unsaved canvas edits into the real document with a
+  `WorkspaceEdit` (dirty, unsaved) and persists on save; delegates parsing to the
+  parse worker.
 - **Launch view** — empty Activity Bar webview (`codegraph.launch`). When it
   becomes visible it opens the canvas panel and closes the sidebar — a required
   compromise so the icon can launch the graph without a welcome side menu.
@@ -71,9 +99,13 @@ comments, UI, and docs.
 - **Webview** — the tab rendering the canvas (`viewer/`, bundled to `viewer.js`)
   plus editor overlays.
 - **Overlay / editor** — a CodeMirror instance positioned over a card in the
-  `#editors` layer.
+  `#editors` layer, backed by the real VS Code document: keystrokes are debounced
+  into a live `editFile` (unsaved/dirty), and it two-way syncs with a native
+  editor of the same file. Unsaved text also survives collapse as a session draft.
 - **root** — the workspace/project folder being parsed; also the `localStorage`
   key namespace.
-- **rebuild** — re-parse a folder and replace the graph without reloading.
+- **rebuild** — re-parse a folder and replace the graph without reloading. The
+  `rebuild` message name is kept internally; the Project menu labels it **Reparse**
+  (distinct from **Reset layout**, which only re-runs the layout).
 - **pickFolder** — webview→host message that opens a folder dialog and parses
   the chosen root (start-screen **Choose folder**).

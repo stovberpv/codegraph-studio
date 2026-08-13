@@ -16,34 +16,23 @@ import { load } from "./io.js";
 import { applySize, onEditingChange, openEditor, setEditorSize } from "./sizing.js";
 import { runControl, runFolderControl } from "./collapse.js";
 import { setFollowFocus, setLazyFocus } from "./visibility.js";
-import { setFollowMode, setLayoutMode, setLazyMode } from "./search-controls.js";
+import { setFollowMode, setLayoutMode, setLazyMode, setZenMode } from "./search-controls.js";
+import { clearBufferEdited, markDiskContent, noteBaseline, setBufferEdited } from "./edited.js";
 import { fit } from "./fit.js";
 // side-effect imports: register canvas/toolbar listeners
 import "./interaction.js";
 import "./legend.js";
 import "./rebuild.js";
+import "./menus.js";
 
-/** Publish toolbar height as a CSS variable so the canvas fills the rest. */
-function syncToolbarHeight() {
-  const tb = document.getElementById("toolbar");
-  if (!tb) return;
-  const h = Math.ceil(tb.getBoundingClientRect().height);
-  document.documentElement.style.setProperty("--toolbar-h", h + "px");
-}
 /** Sync canvas backing store to CSS size and devicePixelRatio. */
 function resize() {
-  syncToolbarHeight();
   state.dpr = window.devicePixelRatio || 1;
   canvas.width = Math.floor(canvas.clientWidth * state.dpr);
   canvas.height = Math.floor(canvas.clientHeight * state.dpr);
   markDirty();
 }
 window.addEventListener("resize", resize);
-// toolbar may wrap to multiple rows — watch its height
-const toolbarEl = document.getElementById("toolbar");
-if (toolbarEl && typeof ResizeObserver !== "undefined") {
-  new ResizeObserver(() => resize()).observe(toolbarEl);
-}
 
 /** Animation-frame loop: render when dirty, then schedule the next frame. */
 function frame() {
@@ -82,8 +71,13 @@ window.__cg = {
   setLayoutMode,
   setFollowMode,
   setLazyMode,
+  setZenMode,
   setFollowFocus,
   setLazyFocus,
+  noteBaseline,
+  markDiskContent,
+  setBufferEdited,
+  clearBufferEdited,
   fit,
   centerOn(cx, cy, scale) {
     cam.scale = scale;

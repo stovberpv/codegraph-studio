@@ -27,7 +27,17 @@ export const state = {
 
   storeKey: "codegraph:positions",
   filterKey: "codegraph:filter",
+  editedKey: "codegraph:edited",
   graphRoot: "",
+
+  // "edited" file paths, tracked by CONTENT vs a pristine baseline (edited.js):
+  // `edited` (persisted) = on-disk content differs from baseline; `editedDirty`
+  // (session) = the editor buffer has unsaved changes vs baseline; `baselines`
+  // (session) = pristine content captured at first open. A card shows the edited
+  // dot when it's in `edited` or `editedDirty`.
+  edited: new Set(),
+  editedDirty: new Set(),
+  baselines: new Map(),
 
   layoutMode: "files", // 'files' | 'folder'
   followMode: false,
@@ -35,6 +45,7 @@ export const state = {
   followSet: new Set(), // visible groups in follow mode with a focus
   lazyMode: false, // "lazy watch": all files visible, edges hidden
   lazyFocus: null, // group | null — file whose edges are shown on click
+  zenMode: false, // recolor: only edited files keep their hue, rest go gray
   hideIsolated: false,
 
   hoverButton: null, // {g, action} — control under the cursor

@@ -4,7 +4,7 @@
  */
 import { state, markDirty } from "./state.js";
 import { endpoint, entKey, isFolder } from "./utils.js";
-import { focusValid, unitOf, unitVisible } from "./visibility.js";
+import { edgeIncidentToFocus, focusValid, unitOf, unitVisible } from "./visibility.js";
 
 /** Rebuild unit adjacency, followSet, and aggregated edges for drawing. */
 export function rebuildRenderEdges() {
@@ -33,9 +33,20 @@ export function rebuildRenderEdges() {
   if (state.lazyFocus && !focusValid(state.lazyFocus)) state.lazyFocus = null;
   state.followSet = new Set();
   if (state.followFocus) {
-    state.followSet.add(state.followFocus);
-    const adj = state.unitAdj.get(state.followFocus);
-    if (adj) for (const n of adj) state.followSet.add(n);
+    const f = state.followFocus;
+    state.followSet.add(f);
+    if (isFolder(f) && !f.collapsed) {
+      // an expanded island focuses the whole folder: keep its files and their neighbors
+      for (const g of f.files) {
+        if (g.filteredOut || g.hidden) continue;
+        state.followSet.add(g);
+        const adj = state.unitAdj.get(g);
+        if (adj) for (const n of adj) state.followSet.add(n);
+      }
+    } else {
+      const adj = state.unitAdj.get(f);
+      if (adj) for (const n of adj) state.followSet.add(n);
+    }
   }
   // 3) edges for drawing (aggregated onto a collapsed folder card)
   state.renderEdges = [];
@@ -51,9 +62,9 @@ export function rebuildRenderEdges() {
     if (!ua || !ub || ua === ub) continue;
     if (!unitVisible(ua) || !unitVisible(ub)) continue;
     if (state.lazyMode) {
-      // edges hidden until a unit is selected; then only its in+out
+      // edges hidden until a unit is selected; then only edges incident to it
       if (!state.lazyFocus) continue;
-      if (ua !== state.lazyFocus && ub !== state.lazyFocus) continue;
+      if (!edgeIncidentToFocus(from.group, to.group, ua, ub, state.lazyFocus)) continue;
     }
     if (manual) {
       // toggles at the folder boundary (cross-folder edges only)

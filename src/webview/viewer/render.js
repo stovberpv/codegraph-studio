@@ -7,7 +7,11 @@ import { canvas, ctx } from "./dom.js";
 import { state, cam, nodes } from "./state.js";
 import { BTN, CTRL_GAP, FOLDER_ACTIONS, FOLDER_HEAD, HEADER_H, ICON_ZOOM, TITLE_H } from "./constants.js";
 import { isFolder, isHi } from "./utils.js";
+import { isEdited } from "./edited.js";
 import { t } from "./i18n.js";
+
+// marker color for files the user has edited (kept even when Zen greys the rest)
+const EDITED_COLOR = "#5ac47d";
 import { folderVisible, groupVisible, nodeVisible } from "./visibility.js";
 import { ensureFolderBoxes } from "./folders.js";
 import { controlRects, drawIcon, folderControlRects, folderIconFor, iconFor } from "./icons.js";
@@ -136,9 +140,12 @@ export function render() {
     const isNeighbor = state.hoverNeighbors.has(g);
     const isMatch = state.highlightGroups.has(g);
     const dim = (dimHover && !isHover && !isNeighbor) || (state.highlight.size && !isMatch);
+    const edited = isEdited(g.path);
+    // Zen mode: only edited files keep their hue; everything else desaturates
+    const sat = state.zenMode && !edited ? 0 : 1;
 
     roundRect(g.x, g.y, g.w, g.h, 9);
-    ctx.fillStyle = dim ? `hsla(${g.hue},22%,13%,0.5)` : `hsla(${g.hue},34%,17%,0.72)`;
+    ctx.fillStyle = dim ? `hsla(${g.hue},${22 * sat}%,13%,0.5)` : `hsla(${g.hue},${34 * sat}%,17%,0.72)`;
     ctx.fill();
     ctx.lineWidth = (isHover ? 2 : 1) / cam.scale;
     ctx.strokeStyle = isHover
@@ -147,7 +154,7 @@ export function render() {
         ? "#e0a83d"
         : dim
           ? "rgba(70,80,92,0.5)"
-          : `hsla(${g.hue},45%,45%,0.75)`;
+          : `hsla(${g.hue},${45 * sat}%,45%,0.75)`;
     ctx.stroke();
 
     if (state.selection.has(g)) {
@@ -160,7 +167,7 @@ export function render() {
     if (cam.scale > 0.1) {
       // divider under the header
       ctx.lineWidth = 1 / cam.scale;
-      ctx.strokeStyle = dim ? "rgba(70,80,92,0.35)" : `hsla(${g.hue},40%,40%,0.4)`;
+      ctx.strokeStyle = dim ? "rgba(70,80,92,0.35)" : `hsla(${g.hue},${40 * sat}%,40%,0.4)`;
       ctx.beginPath();
       ctx.moveTo(g.x + 8, g.y + HEADER_H);
       ctx.lineTo(g.x + g.w - 8, g.y + HEADER_H);
@@ -193,21 +200,30 @@ export function render() {
               ? "#5aa0ff"
               : isBtnHover
                 ? "#e6edf3"
-                : `hsl(${g.hue},40%,70%)`;
+                : `hsl(${g.hue},${40 * sat}%,70%)`;
           drawIcon(iconFor(g, r.action), r.x, r.y, color, activeState || isBtnHover);
         }
       }
 
       // body: file name without extension (skip when editor is open)
       if (!g.editing) {
-        ctx.fillStyle = dim ? "#5b6672" : `hsl(${g.hue},52%,78%)`;
+        ctx.fillStyle = dim ? "#5b6672" : `hsl(${g.hue},${52 * sat}%,78%)`;
         ctx.font = "13px ui-monospace, monospace";
         ctx.save();
         ctx.beginPath();
-        ctx.rect(g.x + 8, g.y + HEADER_H, g.w - 16, TITLE_H);
+        // leave room for the edited dot on the right when present
+        ctx.rect(g.x + 8, g.y + HEADER_H, g.w - 16 - (edited ? 10 : 0), TITLE_H);
         ctx.clip();
         ctx.fillText(g.name, g.x + 10, g.y + HEADER_H + 16);
         ctx.restore();
+
+        // edited marker: a small dot in the title row (kept even in Zen mode)
+        if (edited) {
+          ctx.beginPath();
+          ctx.arc(g.x + g.w - 12, g.y + HEADER_H + 11, 3.2, 0, Math.PI * 2);
+          ctx.fillStyle = EDITED_COLOR;
+          ctx.fill();
+        }
 
         if (!g.expanded) {
           ctx.fillStyle = dim ? "#454e58" : "#8b97a4";
@@ -264,6 +280,7 @@ export function render() {
     const dim = (dimHover && !isHover && !isNeighbor) || (state.highlight.size && !isMatch);
     roundRect(n.x, n.y, n.w, n.h, 6);
     const hue = n.group.hue;
+    const nsat = state.zenMode && !isEdited(n.group.path) ? 0 : 1;
     if (isHover) ctx.fillStyle = "#2a3546";
     else if (isMatch) ctx.fillStyle = "#3a2f12";
     else ctx.fillStyle = dim ? "#171b21" : "#1c232c";
@@ -275,7 +292,7 @@ export function render() {
         ? "#e0a83d"
         : dim
           ? "rgba(70,80,92,0.5)"
-          : `hsla(${hue},45%,55%,0.8)`;
+          : `hsla(${hue},${45 * nsat}%,55%,0.8)`;
     ctx.stroke();
     if (showText) {
       ctx.fillStyle = dim ? "#5b6672" : "#e6edf3";

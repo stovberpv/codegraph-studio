@@ -2,6 +2,11 @@
   box-sizing: border-box;
 }
 
+:root {
+  /* no fixed top bar anymore — controls float as corner docks over the canvas */
+  --toolbar-h: 0px;
+}
+
 html,
 body {
   margin: 0;
@@ -15,40 +20,137 @@ body {
   color: #e6edf3;
 }
 
-#toolbar {
+/* control menus — corner icon-buttons that open a vertical dropdown of controls */
+.menu-bar {
   position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  min-height: 52px;
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 8px;
-  row-gap: 8px;
-  padding: 9px 14px;
-  background: rgba(17, 21, 28, 0.9);
-  border-bottom: 1px solid #232a33;
+  top: 12px;
   z-index: 10;
-  backdrop-filter: blur(12px);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+#dockLeft {
+  left: 12px;
+  align-items: flex-start;
+}
+#dockRight {
+  right: 12px;
+  align-items: flex-end;
+}
+.menu {
+  position: relative;
 }
 
-/* brand + stats */
-.brand {
+/* the icon-button trigger */
+.menu-btn {
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #cdd7e1;
+  background: rgba(17, 21, 28, 0.72);
+  border: 1px solid #232a33;
+  border-radius: 9px;
+  backdrop-filter: blur(10px);
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.35);
+}
+.menu-btn:hover {
+  color: #e6edf3;
+  background: #232c37;
+  border-color: #3a4552;
+}
+.menu-btn svg {
+  width: 17px;
+  height: 17px;
+}
+.menu.open .menu-btn {
+  color: #9ec0ff;
+  border-color: #3d7de6;
+}
+
+/* the dropdown popup — a vertical list of controls anchored to its trigger */
+.menu-pop {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  z-index: 11;
+  display: none;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 8px;
+  width: 232px;
+  max-height: calc(100vh - 68px);
+  overflow: auto;
+  padding: 8px;
+  background: rgba(17, 21, 28, 0.94);
+  border: 1px solid #2b333d;
+  border-radius: 12px;
+  backdrop-filter: blur(12px);
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.5);
+}
+.menu.right .menu-pop {
+  left: auto;
+  right: 0;
+}
+.menu.open .menu-pop {
+  display: flex;
+}
+.menu-pop > button,
+.menu-pop .field {
+  width: 100%;
+  flex: none; /* don't let flex-basis (e.g. .path-field) stretch rows vertically */
+}
+.menu-pop > button {
+  text-align: left;
+}
+.menu-pop .grp {
+  display: flex;
+  width: 100%;
+}
+.menu-pop .grp button {
+  flex: 1;
+}
+.menu-title {
   display: flex;
   align-items: center;
   gap: 8px;
+  padding: 2px 4px 6px;
   font-weight: 600;
   letter-spacing: 0.02em;
   color: #e6edf3;
   white-space: nowrap;
+  border-bottom: 1px solid #232a33;
 }
-.brand .logo {
+.logo {
   width: 11px;
   height: 11px;
   border-radius: 3px;
   background: linear-gradient(135deg, #3d7de6, #8b5cf6);
   box-shadow: 0 0 10px rgba(61, 125, 230, 0.6);
+}
+/* small uppercase section header grouping controls inside a dropdown */
+.menu-label {
+  flex: none;
+  padding: 0 4px;
+  margin-bottom: -3px; /* pull the control(s) below it closer than the 8px gap */
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #6b7785;
+}
+/* muted read-only line (e.g. the current project root) */
+.menu-note {
+  flex: none;
+  padding: 0 4px;
+  font-size: 11px;
+  color: #9aa7b4;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
 }
 
 .stats {
@@ -64,17 +166,11 @@ body {
   margin: 4px 3px;
   background: #262e39;
 }
-/* path + rebuild pinned to the right (within their row when wrapped) */
-.path-field {
-  margin-left: auto;
-}
-
 /* everything except input fields and the spacer does not shrink */
 .brand,
 .stats,
 .sep,
-.grp,
-#toolbar > button {
+.grp {
   flex: none;
 }
 
@@ -117,38 +213,6 @@ body {
 .path-field {
   flex: 0 1 220px;
   min-width: 110px;
-}
-
-/* floating panels over the canvas */
-.float-panel {
-  position: fixed;
-  z-index: 6;
-  display: flex;
-  gap: 8px;
-  padding: 8px;
-  font-size: 12px;
-  background: rgba(17, 21, 28, 0.72);
-  border: 1px solid #232a33;
-  border-radius: 12px;
-  backdrop-filter: blur(10px);
-  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.35);
-}
-#searchPanel {
-  top: calc(var(--toolbar-h, 52px) + 12px);
-  left: 12px;
-  flex-direction: column;
-  width: 264px;
-}
-#searchPanel .field {
-  width: 100%;
-}
-#cardPanel {
-  top: calc(var(--toolbar-h, 52px) + 12px);
-  right: 12px;
-  flex-direction: column;
-}
-#cardPanel button {
-  width: 100%;
 }
 
 /* counters info-bar (bottom right) */
@@ -504,6 +568,45 @@ button.toggle.active {
 }
 @media (prefers-reduced-motion: reduce) {
   .loading-overlay .spinner {
+    animation-duration: 2s;
+  }
+}
+
+/* transient toast for CPU-heavy in-canvas actions (heavy.js) — a small pill
+   with a spinner + a description, top-center, never traps input. */
+.toast {
+  position: fixed;
+  top: 16px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 9;
+  pointer-events: none;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 8px 14px;
+  color: #dbe4ee;
+  font-size: 12px;
+  letter-spacing: 0.02em;
+  background: rgba(17, 21, 28, 0.92);
+  border: 1px solid #2b333d;
+  border-radius: 999px;
+  backdrop-filter: blur(10px);
+  box-shadow: 0 10px 34px rgba(0, 0, 0, 0.45);
+}
+.toast[hidden] {
+  display: none;
+}
+.toast-spinner {
+  width: 15px;
+  height: 15px;
+  border-radius: 50%;
+  border: 2px solid #2b3540;
+  border-top-color: #3d7de6;
+  animation: cg-spin 0.8s linear infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .toast-spinner {
     animation-duration: 2s;
   }
 }

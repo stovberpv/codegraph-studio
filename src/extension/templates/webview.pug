@@ -15,47 +15,86 @@ html(lang=lang)
     title= t.app_title
     link(rel="stylesheet" href=cssHref)
   body
-    #toolbar
-      .brand
-        span.logo
-        | codegraph&nbsp;studio
-      span.sep
-      .grp(role="group" aria-label=t.a11y_grouping)
-        button#modeFiles.active(title=t.mode_files_title)= t.mode_files
-        button#modeFolders(title=t.mode_folders_title)= t.mode_folders
-      button#followMode.toggle(title=t.follow_title)= t.follow
-      button#lazyMode.toggle(title=t.lazy_title)= t.lazy
-      span.sep
-      button#showHidden(title=t.show_hidden_title)= t.show_hidden
-      button#hideIsolated.toggle(title=t.hide_isolated_title)= t.hide_isolated
-      span.sep
-      .grp(role="group" aria-label=t.a11y_view)
-        button#relayout(title=t.relayout_title)= t.relayout
-        button#fit(title=t.fit_title)= t.fit
-      if standalone
-        label.field.path-field(title=t.root_path_title)
-          svg(viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round")
+    //- Header controls live in corner icon-button menus; each opens a vertical
+    //- dropdown of its controls (menus.js). Project + View on the top-left,
+    //- Arrange + Search on the top-right. Only one menu is open at a time.
+    #dockLeft.menu-bar
+      .menu#menuProject
+        button.menu-btn(type="button" title=t.menu_project_title aria-haspopup="true" aria-expanded="false")
+          svg(viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true")
             path(d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z")
-          input#rootPath.path(type="text" spellcheck="false" placeholder=t.root_path_placeholder)
-        button#rebuild.primary(title=t.rebuild_title)= t.rebuild
+        .menu-pop(role="menu" aria-label=t.menu_project_title)
+          .menu-title
+            span.logo
+            | codegraph&nbsp;studio
+          .menu-label= t.project_root_label
+          .menu-note#projectRoot(title="")= t.project_root_none
+          if standalone
+            label.field.path-field(title=t.root_path_title)
+              svg(viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round")
+                path(d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z")
+              input#rootPath.path(type="text" spellcheck="false" placeholder=t.root_path_placeholder)
+            button#rebuild.primary(title=t.rebuild_title)= t.rebuild
+          else
+            button#reparseProject.primary(title=t.reparse_project_title)= t.reparse_project
+            button#openFolder(title=t.open_folder_title)= t.open_folder
+      .menu#menuView
+        button.menu-btn(type="button" title=t.menu_view_title aria-haspopup="true" aria-expanded="false")
+          svg(viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true")
+            line(x1="21" x2="14" y1="4" y2="4")
+            line(x1="10" x2="3" y1="4" y2="4")
+            line(x1="21" x2="12" y1="12" y2="12")
+            line(x1="8" x2="3" y1="12" y2="12")
+            line(x1="21" x2="16" y1="20" y2="20")
+            line(x1="12" x2="3" y1="20" y2="20")
+            line(x1="14" x2="14" y1="2" y2="6")
+            line(x1="8" x2="8" y1="10" y2="14")
+            line(x1="16" x2="16" y1="18" y2="22")
+        .menu-pop(role="menu" aria-label=t.menu_view_title)
+          .menu-label= t.view_layout_label
+          .grp(role="group" aria-label=t.a11y_grouping)
+            button#modeFiles.active(title=t.mode_files_title)= t.mode_files
+            button#modeFolders(title=t.mode_folders_title)= t.mode_folders
+          .menu-label= t.view_focus_label
+          button#followMode.toggle(title=t.follow_title)= t.follow
+          button#lazyMode.toggle(title=t.lazy_title)= t.lazy
+          button#zenMode.toggle(title=t.zen_title)= t.zen
+          .menu-label= t.view_visibility_label
+          button#hideIsolated.toggle(title=t.hide_isolated_title)= t.hide_isolated
+          button#showHidden(title=t.show_hidden_title)= t.show_hidden
+
+    #dockRight.menu-bar
+      .menu.right#menuArrange
+        button.menu-btn(type="button" title=t.menu_arrange_title aria-haspopup="true" aria-expanded="false")
+          svg(viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true")
+            rect(width="7" height="7" x="3" y="3" rx="1")
+            rect(width="7" height="7" x="14" y="3" rx="1")
+            rect(width="7" height="7" x="14" y="14" rx="1")
+            rect(width="7" height="7" x="3" y="14" rx="1")
+        .menu-pop(role="menu" aria-label=t.menu_arrange_title)
+          button#fit(title=t.fit_title)= t.fit
+          button#relayout(title=t.relayout_title)= t.relayout
+          .menu-label= t.arrange_cards_label
+          button#expandAll(title=t.expand_all_title)= t.expand_all
+          button#collapseAll(title=t.collapse_all_title)= t.collapse_all
+      .menu.right#menuSearch
+        button.menu-btn(type="button" title=t.menu_search_title aria-haspopup="true" aria-expanded="false")
+          svg(viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true")
+            circle(cx="11" cy="11" r="8")
+            path(d="m21 21-4.3-4.3")
+        .menu-pop(role="menu" aria-label=t.menu_search_title)
+          label.field(title=t.search_title)
+            svg(viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round")
+              circle(cx="11" cy="11" r="8")
+              path(d="m21 21-4.3-4.3")
+            input#search(type="search" placeholder=t.search_placeholder)
+          label.field(title=t.filter_title)
+            svg(viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round")
+              polygon(points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3")
+            input#filter(type="text" spellcheck="false" placeholder=t.filter_placeholder)
 
     canvas#canvas
     #editors(aria-hidden="true")
-
-    #searchPanel.float-panel
-      label.field(title=t.search_title)
-        svg(viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round")
-          circle(cx="11" cy="11" r="8")
-          path(d="m21 21-4.3-4.3")
-        input#search(type="search" placeholder=t.search_placeholder)
-      label.field(title=t.filter_title)
-        svg(viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round")
-          polygon(points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3")
-        input#filter(type="text" spellcheck="false" placeholder=t.filter_placeholder)
-
-    #cardPanel.float-panel
-      button#expandAll(title=t.expand_all_title)= t.expand_all
-      button#collapseAll(title=t.collapse_all_title)= t.collapse_all
 
     #infobar.info-bar
       span#stats= t.stats_loading
@@ -96,6 +135,12 @@ html(lang=lang)
     #loading.loading-overlay(hidden aria-live="polite")
       .spinner(aria-hidden="true")
       span.loading-label= t.analyzing
+
+    //- transient toast for CPU-heavy in-canvas actions (heavy.js); shown only
+    //- when an operation is predicted to block for ~1s+ (large graphs)
+    #toast.toast(hidden role="status" aria-live="polite")
+      .toast-spinner(aria-hidden="true")
+      span.toast-label
 
     if !standalone
       #start.start-overlay(hidden)

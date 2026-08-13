@@ -27,8 +27,19 @@ export function unitVisible(u) {
 /** True if focus unit u still exists and is eligible to be focused. */
 export function focusValid(u) {
   if (!u) return false;
-  if (isFolder(u)) return state.layoutMode === "folder" && !u.hidden && u.collapsed;
+  // a folder is focusable as a whole — collapsed card or expanded island
+  if (isFolder(u)) return state.layoutMode === "folder" && !u.hidden;
   return !u.filteredOut && unitOf(u) === u;
+}
+// Whether an edge (given by its two file groups) is incident to the focus unit.
+// For a folder focus, "incident" means the edge crosses the folder boundary
+// (exactly one endpoint inside it); this holds for both collapsed and expanded
+// folders, so an island reveals the same cross-folder links as its card.
+/** Whether an edge's two file groups are incident to the current focus unit. */
+export function edgeIncidentToFocus(fromGroup, toGroup, ua, ub, focus) {
+  if (!focus) return false;
+  if (isFolder(focus)) return (fromGroup.folder === focus.key) !== (toGroup.folder === focus.key);
+  return ua === focus || ub === focus;
 }
 
 /** Visibility of a file card under filter, follow, lazy, and manual hide. */
@@ -70,7 +81,7 @@ export function setLazyFocus(u) {
 /** Map a hover/click entity to a focusable unit (file or collapsed folder). */
 export function focusUnitFromEntity(ent) {
   if (!ent) return null;
-  if (isFolder(ent)) return ent.collapsed ? ent : null;
+  if (isFolder(ent)) return ent; // a folder (collapsed card or expanded island) is a focus unit
   if (isGroup(ent)) return ent;
   if (ent.group) return ent.group;
   return null;

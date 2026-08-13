@@ -11,6 +11,7 @@ import { state, nodes } from "./state.js";
 import { NODE_H } from "./constants.js";
 import { t } from "./i18n.js";
 import { applySaved, loadSaved } from "./persistence.js";
+import { loadEdited } from "./edited.js";
 import { syncModeButtons } from "./search-controls.js";
 import { layout } from "./layout.js";
 import { applyFilter } from "./glob-filter.js";
@@ -138,8 +139,15 @@ export function build(data) {
   state.graphRoot = data.root || "";
   state.storeKey = "codegraph:positions:" + state.graphRoot;
   state.filterKey = "codegraph:filter:" + state.graphRoot;
-  const rp = document.getElementById("rootPath");
-  if (rp && data.root) rp.value = data.root;
+  state.editedKey = "codegraph:edited:" + state.graphRoot;
+  loadEdited();
+  // reflect the parsed root in the Project menu; the standalone path input stays
+  // empty (it's for entering a *new* target — empty Reparse re-parses this root)
+  const rootNote = document.getElementById("projectRoot");
+  if (rootNote) {
+    rootNote.textContent = state.graphRoot || t("project_root_none");
+    rootNote.title = state.graphRoot || "";
+  }
   // restore the filter string for this root
   if (filterEl) {
     try {

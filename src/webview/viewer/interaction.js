@@ -191,9 +191,9 @@ window.addEventListener("mouseup", (e) => {
     } else if (state.drag.type === "folderControl") {
       runFolderControl(state.drag.folder, state.drag.action);
     } else if (state.drag.type === "folder") {
-      // click on a collapsed folder in follow/lazy mode — focus it
+      // click on a folder (collapsed card or expanded island) in follow/lazy mode — focus it
       const moved = Math.hypot(e.clientX - (state.drag.startSX || e.clientX), e.clientY - (state.drag.startSY || e.clientY));
-      if ((state.followMode || state.lazyMode) && state.drag.folder.collapsed && moved < 4) {
+      if ((state.followMode || state.lazyMode) && moved < 4) {
         (state.followMode ? setFollowFocus : setLazyFocus)(state.drag.folder);
       } else {
         saveLayout();

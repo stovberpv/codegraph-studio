@@ -19,41 +19,62 @@ export const LOCALES = {
   en: {
     app_title: "codegraph-studio — call tree",
 
-    // toolbar
-    a11y_grouping: "Grouping",
-    a11y_view: "View",
-    mode_files: "files",
-    mode_files_title: "Gravity between files",
-    mode_folders: "folders",
-    mode_folders_title: "First within a folder, then between folders",
-    follow: "follow",
-    follow_title: "Global follow: clicking a file shows only it and its direct links",
-    lazy: "lazy observation",
-    lazy_title: "Lazy observation: all files visible, links hidden; click a file to show its incoming + outgoing links",
-    show_hidden: "show hidden",
-    show_hidden_title: "Show hidden files and restore incoming links",
-    hide_isolated: "isolated",
-    hide_isolated_title: "Hide files with no cross-file links",
-    relayout: "reset",
-    relayout_title: "Reset saved positions and rebuild the layout",
-    fit: "fit",
-    fit_title: "Fit the graph to the screen",
+    // control menus (corner icon-buttons opening a dropdown of controls)
+    menu_project_title: "Project",
+    menu_view_title: "View",
+    menu_arrange_title: "Arrange",
+    menu_search_title: "Search & filter",
+
+    // section labels inside the dropdowns
+    project_root_label: "Current project",
+    project_root_none: "no project loaded",
+    view_layout_label: "Layout",
+    view_focus_label: "Focus",
+    view_visibility_label: "Visibility",
+    arrange_cards_label: "Cards",
+
+    // project menu — reparse / folder
     root_path_title: "Absolute path to a folder: /home/… , C:\\Users\\… or ~/…",
-    root_path_placeholder: "path to the project folder…",
-    rebuild: "rebuild",
-    rebuild_title: "Rebuild the graph for the given folder",
+    root_path_placeholder: "path to parse (leave empty for current)…",
+    rebuild: "Reparse",
+    rebuild_title: "Parse the folder above and rebuild the graph",
+    reparse_project: "Reparse project",
+    reparse_project_title: "Parse the workspace folder again and rebuild the graph",
+    open_folder: "Open folder…",
+    open_folder_title: "Pick another folder to parse",
+
+    // view menu — layout / focus / visibility
+    a11y_grouping: "Grouping",
+    mode_files: "Files",
+    mode_files_title: "Gravity between files",
+    mode_folders: "Folders",
+    mode_folders_title: "First within a folder, then between folders",
+    follow: "Follow mode",
+    follow_title: "Global follow: clicking a file shows only it and its direct links",
+    lazy: "Lazy observation",
+    lazy_title: "Lazy observation: all files visible, links hidden; click a file to show its incoming + outgoing links",
+    zen: "Zen mode",
+    zen_title: "Zen mode: keep color only on edited files; grey out the rest. Combines with Follow/Lazy.",
+    show_hidden: "Show hidden",
+    show_hidden_title: "Show hidden files and restore incoming links",
+    hide_isolated: "Hide isolated",
+    hide_isolated_title: "Hide files with no cross-file links",
+
+    // arrange menu — fit / reset / cards
+    relayout: "Reset layout",
+    relayout_title: "Discard saved positions and re-run the layout (does not re-parse)",
+    fit: "Fit to screen",
+    fit_title: "Fit the graph to the screen",
+    expand_all: "Expand all",
+    expand_all_title: "Expand all cards",
+    collapse_all: "Collapse all",
+    collapse_all_title: "Collapse all cards",
 
     // search / filter panel
     search_title: "Search functions by name",
     search_placeholder: "search function…",
     filter_title: "Glob over the relative path: server/**/*.ts, !*.test.ts",
     filter_placeholder: "glob: **/*.service.ts, !*.test.ts",
-
-    // card panel
-    expand_all: "expand",
-    expand_all_title: "Expand all cards",
-    collapse_all: "collapse",
-    collapse_all_title: "Collapse all cards",
 
     // info bar
     stats_loading: "loading…",
@@ -82,6 +103,16 @@ export const LOCALES = {
     start_title: "Call Graph",
     start_analyze: "Analyze current project",
     start_pick: "Choose folder",
+
+    // processing toasts for CPU-heavy in-canvas actions (heavy.js)
+    busy_reset_layout: "Resetting layout…",
+    busy_mode_files: "Switching to files layout…",
+    busy_mode_folders: "Switching to folders layout…",
+    busy_isolated: "Recomputing layout…",
+    busy_expand_all: "Expanding all cards…",
+    busy_collapse_all: "Collapsing all cards…",
+    busy_show_hidden: "Restoring hidden files…",
+    busy_links: "Rebuilding links…",
 
     // viewer status / errors
     waiting_graph: "waiting for the graph…",

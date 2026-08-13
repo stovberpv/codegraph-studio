@@ -15,6 +15,7 @@ export const modeFilesEl = document.getElementById("modeFiles");
 export const modeFoldersEl = document.getElementById("modeFolders");
 export const followModeEl = document.getElementById("followMode");
 export const lazyModeEl = document.getElementById("lazyMode");
+export const zenModeEl = document.getElementById("zenMode");
 
 // VS Code webview API (null in standalone)
 export const vscodeApi =
