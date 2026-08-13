@@ -2,8 +2,13 @@
  * VS Code extension host for codegraph.
  * The Activity Bar icon (and codegraph.open) opens a WebviewPanel with the
  * canvas; parsing runs in the host only after the user picks a root on the
- * start screen (or via Parse Folder… / rebuild). Files are read/saved via
- * workspace.fs / WorkspaceEdit.
+ * start screen (or via Parse Folder… / rebuild). The last parsed graph is cached
+ * for the session so closing and reopening the panel replays it without a
+ * re-parse. The on-canvas editor is backed by the real VS Code document: it is
+ * opened via openTextDocument, unsaved edits are mirrored live through a
+ * WorkspaceEdit (making the file dirty without saving), Save persists to disk,
+ * and native-editor changes sync back to the canvas. All file paths resolve
+ * against the parsed graph root (not the workspace folder).
  */
 import * as vscode from "vscode";
 import * as path from "node:path";
@@ -28,16 +33,35 @@ type ParseProgress = { phase: "discover" | "parse"; files: number; parsed?: numb
 type WebviewToHost =
   | { type: "ready" }
   | { type: "openFile"; path: string }
+  | { type: "editFile"; path: string; text: string }
   | { type: "saveFile"; path: string; text: string }
   | { type: "rebuild"; root?: string; includeTests?: boolean }
   | { type: "pickFolder" };
 
 let currentPanel: vscode.WebviewPanel | undefined;
 let pendingRoot: string | undefined;
+/**
+ * Last successfully parsed graph and its root, cached for the session so that
+ * closing and reopening the panel replays it instead of forcing a re-parse.
+ * Survives panel disposal; cleared only on extension deactivate.
+ */
+let lastGraph: unknown | undefined;
+let lastRoot: string | undefined;
 /** cancels the in-flight parse when a newer one starts or the user cancels */
 let activeParseCts: vscode.CancellationTokenSource | undefined;
 /** paths open in overlays (relative), used for externalChange notifications */
 const openOverlayPaths = new Set<string>();
+/**
+ * The last document text the host and canvas are known to agree on, keyed by
+ * relative path — set whenever the host reads (openFile), writes (editFile /
+ * saveFile), or forwards a genuine external change. A document change whose text
+ * still equals this value is the host's own edit (or a no-op reconcile), never a
+ * real external change, so it is not echoed back to the canvas. Unlike a one-shot
+ * flag this survives duplicate/late change events and the debounce window, so a
+ * canvas that is briefly ahead of the last sync is never mislabeled "changed
+ * externally". Cleared when the panel is disposed.
+ */
+const syncedText = new Map<string, string>();
 /** Diagnostic log for parses (root/selfDir, counts, opt-in per-path trace). */
 let output: vscode.OutputChannel | undefined;
 
@@ -101,16 +125,42 @@ export function activate(context: vscode.ExtensionContext): void {
     ),
   );
 
+  // Mirror edits made in a *native* VS Code editor of an overlay-open file back
+  // onto the canvas (both while typing and on save), so the two stay in sync.
+  // Echoes of the host's own writes are filtered out via `hostWrites`.
   context.subscriptions.push(
-    vscode.workspace.onDidSaveTextDocument((doc) => {
-      if (!currentPanel) return;
-      const folder = vscode.workspace.workspaceFolders?.[0];
-      if (!folder) return;
-      const rel = path.relative(folder.uri.fsPath, doc.uri.fsPath).split(path.sep).join("/");
-      if (!openOverlayPaths.has(rel)) return;
-      post(currentPanel, { type: "externalChange", path: rel, text: doc.getText() });
-    }),
+    vscode.workspace.onDidChangeTextDocument((e) => pushDocToCanvas(e.document)),
+    vscode.workspace.onDidSaveTextDocument((doc) => pushDocToCanvas(doc)),
   );
+}
+
+/**
+ * Path of `doc` relative to the active graph root (the parsed folder, else the
+ * first workspace folder), in POSIX form — or undefined if it lies outside.
+ * Why: overlay paths are relative to the parsed root, which may differ from the
+ * workspace folder, so sync must resolve against the same base the graph used.
+ */
+function relForActiveRoot(doc: vscode.TextDocument): string | undefined {
+  const base = lastRoot ?? vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+  if (!base) return undefined;
+  const rel = path.relative(base, doc.uri.fsPath).split(path.sep).join("/");
+  if (!rel || rel.startsWith("../") || path.isAbsolute(rel)) return undefined;
+  return rel;
+}
+
+/**
+ * Pushes a document's current text to the canvas overlay for its path, unless it
+ * is not open in an overlay or the change is merely the echo of a host write.
+ */
+function pushDocToCanvas(doc: vscode.TextDocument): void {
+  if (!currentPanel) return;
+  const rel = relForActiveRoot(doc);
+  if (!rel || !openOverlayPaths.has(rel)) return;
+  const text = doc.getText();
+  // equal to the last host↔canvas sync → our own write or a no-op, not external
+  if (syncedText.get(rel) === text) return;
+  syncedText.set(rel, text); // now the agreed text is this external content
+  post(currentPanel, { type: "externalChange", path: rel, text });
 }
 
 /**
@@ -152,7 +202,10 @@ export function deactivate(): void {
   activeParseCts?.cancel();
   activeParseCts = undefined;
   currentPanel = undefined;
+  lastGraph = undefined;
+  lastRoot = undefined;
   openOverlayPaths.clear();
+  syncedText.clear();
 }
 
 /**
@@ -207,6 +260,7 @@ function openPanel(context: vscode.ExtensionContext): void {
       activeParseCts = undefined;
       currentPanel = undefined;
       openOverlayPaths.clear();
+      syncedText.clear();
     },
     null,
     context.subscriptions,
@@ -242,11 +296,17 @@ async function handleMessage(
 
   if (msg.type === "ready") {
     // Parse only when a command already chose a root (Parse Folder… / Reparse).
-    // Otherwise the canvas shows the start screen until the user clicks a button.
     if (pendingRoot) {
       const root = pendingRoot;
       pendingRoot = undefined;
       void sendGraph(panel, root, context);
+      return;
+    }
+    // Otherwise replay the last parse from this session so reopening the panel
+    // doesn't force a re-parse; only a first-ever open shows the start screen.
+    if (lastGraph !== undefined) {
+      log(`replaying cached graph for root=${lastRoot ?? "?"}`);
+      post(panel, { type: "graph", graph: lastGraph });
     }
     return;
   }
@@ -271,34 +331,65 @@ async function handleMessage(
     return;
   }
 
+  // File paths resolve against the parsed graph root, NOT the workspace folder —
+  // parsing an arbitrary folder must still read/write its real files.
+  const rootUri = lastRoot ? vscode.Uri.file(lastRoot) : folder.uri;
+
   if (msg.type === "openFile") {
     const rel = normalizeRel(msg.path);
-    const uri = vscode.Uri.joinPath(folder.uri, ...rel.split("/"));
+    const uri = vscode.Uri.joinPath(rootUri, ...rel.split("/"));
     let text: string;
     try {
-      const buf = await vscode.workspace.fs.readFile(uri);
-      text = Buffer.from(buf).toString("utf8");
+      // openTextDocument (not fs.readFile) so any *unsaved* edits already live in
+      // VS Code's model are shown on the canvas too.
+      const doc = await vscode.workspace.openTextDocument(uri);
+      text = doc.getText();
     } catch {
       post(panel, { type: "error", message: vscode.l10n.t("could not read {0}", rel) });
       return;
     }
     openOverlayPaths.add(rel);
+    syncedText.set(rel, text); // canvas and host start in agreement
     const language = rel.endsWith(".tsx") ? "tsx" : rel.endsWith(".ts") ? "typescript" : "javascript";
     post(panel, { type: "fileContent", path: rel, text, language });
     return;
   }
 
+  // Live (unsaved) edit: mirror the canvas text into the real document so VS Code
+  // marks the file dirty and shows it everywhere — but do NOT save it to disk.
+  if (msg.type === "editFile") {
+    const rel = normalizeRel(msg.path);
+    const uri = vscode.Uri.joinPath(rootUri, ...rel.split("/"));
+    try {
+      const doc = await vscode.workspace.openTextDocument(uri);
+      const text = msg.text ?? "";
+      syncedText.set(rel, text); // canvas is authoritative for this text now
+      if (doc.getText() === text) return; // already in sync — no churn, no echo
+      const full = new vscode.Range(doc.positionAt(0), doc.positionAt(doc.getText().length));
+      const edit = new vscode.WorkspaceEdit();
+      edit.replace(uri, full, text);
+      await vscode.workspace.applyEdit(edit);
+    } catch {
+      /* file vanished/renamed — ignore; a later save surfaces the error */
+    }
+    return;
+  }
+
   if (msg.type === "saveFile") {
     const rel = normalizeRel(msg.path);
-    const uri = vscode.Uri.joinPath(folder.uri, ...rel.split("/"));
+    const uri = vscode.Uri.joinPath(rootUri, ...rel.split("/"));
     const doc = await vscode.workspace.openTextDocument(uri);
-    const full = new vscode.Range(doc.positionAt(0), doc.positionAt(doc.getText().length));
-    const edit = new vscode.WorkspaceEdit();
-    edit.replace(uri, full, msg.text ?? "");
-    const ok = await vscode.workspace.applyEdit(edit);
-    if (!ok) {
-      post(panel, { type: "error", message: vscode.l10n.t("could not apply edit: {0}", rel) });
-      return;
+    const text = msg.text ?? "";
+    syncedText.set(rel, text);
+    if (doc.getText() !== text) {
+      const full = new vscode.Range(doc.positionAt(0), doc.positionAt(doc.getText().length));
+      const edit = new vscode.WorkspaceEdit();
+      edit.replace(uri, full, text);
+      const ok = await vscode.workspace.applyEdit(edit);
+      if (!ok) {
+        post(panel, { type: "error", message: vscode.l10n.t("could not apply edit: {0}", rel) });
+        return;
+      }
     }
     await doc.save();
     post(panel, { type: "saved", path: rel });
@@ -358,6 +449,9 @@ async function sendGraph(
       },
     );
     logGraphCounts(graph);
+    // cache for the session so a closed/reopened panel replays without re-parsing
+    lastGraph = graph;
+    lastRoot = root;
     post(panel, { type: "graph", graph });
   } catch (e) {
     // A cancelled or superseded parse leaves the current graph in place.

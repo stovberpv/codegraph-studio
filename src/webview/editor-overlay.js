@@ -15,6 +15,43 @@ const MAX_OPEN = 4;
 const editors = new Map();
 /** queue of paths awaiting fileContent */
 const pending = new Set();
+/**
+ * Session drafts of unsaved edits, keyed by path. Collapsing an editor (the card
+ * pencil or the ✕ — both labeled "Collapse editor") destroys the CodeMirror view,
+ * so without this the in-progress text would be lost and re-opening would show the
+ * on-disk version. We stash the dirty text here on collapse and restore it when
+ * the editor is opened again. Cleared on save and on graph reload (closeAll).
+ * @type {Map<string, string>}
+ */
+const drafts = new Map();
+
+// Debounce for mirroring unsaved edits into the real VS Code document (dirty),
+// keyed by path. Coalesces bursts of keystrokes into one host edit.
+const LIVE_SYNC_MS = 250;
+/** @type {Map<string, ReturnType<typeof setTimeout>>} */
+const liveTimers = new Map();
+
+/** Cancel a pending live-sync for a path (on save/close, or when superseded). */
+function cancelLiveSync(path) {
+  const t = liveTimers.get(path);
+  if (t) {
+    clearTimeout(t);
+    liveTimers.delete(path);
+  }
+}
+
+/** Debounced: push the editor's current text to the host as an unsaved edit. */
+function scheduleLiveSync(path) {
+  cancelLiveSync(path);
+  liveTimers.set(
+    path,
+    setTimeout(() => {
+      liveTimers.delete(path);
+      const ed = editors.get(path);
+      if (ed && ed.view) post({ type: "editFile", path, text: ed.view.state.doc.toString() });
+    }, LIVE_SYNC_MS),
+  );
+}
 
 /** Resolved UI messages injected by the Pug template (#cg-i18n JSON island). */
 const CG_MSG = (() => {
@@ -266,8 +303,18 @@ function mountView(path, text) {
       keymap.of([indentWithTab, ...defaultKeymap, ...historyKeymap]),
       EditorView.updateListener.of((u) => {
         if (u.docChanged) {
+          // ignore programmatic updates the host pushed (native-editor sync),
+          // so we don't bounce them straight back and fight the caret
+          if (ed.applyingExternal) return;
           ed.dirty = true;
           setStatus(ed, t("ed_changed"), "dirty");
+          // content-based edited mark: dot only while the buffer differs from the
+          // pristine baseline (so undoing back to the original clears it)
+          if (window.__cg && typeof window.__cg.setBufferEdited === "function") {
+            window.__cg.setBufferEdited(path, u.state.doc.toString());
+          }
+          // mirror into the real document so VS Code sees the unsaved change
+          scheduleLiveSync(path);
         }
       }),
       EditorView.theme({
@@ -290,8 +337,9 @@ function mountView(path, text) {
 function save(path) {
   const ed = editors.get(path);
   if (!ed || !ed.view) return;
+  cancelLiveSync(path); // the save carries the full text; no separate live edit
   const text = ed.view.state.doc.toString();
-  setStatus(ed, "сохранение…", "muted");
+  setStatus(ed, t("ed_saving"), "muted");
   post({ type: "saveFile", path, text });
 }
 
@@ -302,6 +350,12 @@ function save(path) {
 function close(path) {
   const ed = editors.get(path);
   if (!ed) return;
+  cancelLiveSync(path);
+  // Collapsing must not lose work: keep any unsaved text as a session draft so
+  // re-opening restores it (see `drafts`). Only truly dirty views are stashed.
+  if (ed.view && ed.dirty) {
+    drafts.set(path, ed.view.state.doc.toString());
+  }
   if (ed.view) {
     ed.view.destroy();
     ed.view = null;
@@ -309,6 +363,15 @@ function close(path) {
   ed.el.remove();
   editors.delete(path);
   pending.delete(path);
+  // recompute the session dot from the held draft (if any): dot iff the draft
+  // still differs from the baseline; otherwise the editor closed clean
+  if (window.__cg) {
+    if (drafts.has(path) && typeof window.__cg.setBufferEdited === "function") {
+      window.__cg.setBufferEdited(path, drafts.get(path));
+    } else if (typeof window.__cg.clearBufferEdited === "function") {
+      window.__cg.clearBufferEdited(path);
+    }
+  }
   const g = findGroup(path);
   if (g) setEditing(g, false);
   sync();
@@ -320,6 +383,7 @@ function close(path) {
  */
 function closeAll() {
   for (const p of [...editors.keys()]) close(p);
+  drafts.clear(); // graph reload/reparse starts a fresh editor session
 }
 
 /**
@@ -329,6 +393,29 @@ function closeAll() {
 function onFileContent(msg) {
   if (!msg || !msg.path) return;
   if (!editors.has(msg.path)) return;
+  // Record the pristine baseline the first time we see this file (edited marks
+  // are computed by comparing content against it).
+  if (window.__cg && typeof window.__cg.noteBaseline === "function") {
+    window.__cg.noteBaseline(msg.path, msg.text);
+  }
+  // A held draft (unsaved edits from a previous collapse) wins over the on-disk
+  // text: mount it and re-flag the editor dirty so its state is fully restored.
+  const draft = drafts.get(msg.path);
+  if (draft != null) {
+    mountView(msg.path, draft);
+    const ed = editors.get(msg.path);
+    if (ed) {
+      ed.dirty = true;
+      setStatus(ed, t("ed_changed"), "dirty");
+    }
+    if (window.__cg && typeof window.__cg.setBufferEdited === "function") {
+      window.__cg.setBufferEdited(msg.path, draft);
+    }
+    // re-mirror the restored draft so the real document matches it exactly
+    // (a pending live edit may have been cancelled when the editor collapsed)
+    scheduleLiveSync(msg.path);
+    return;
+  }
   mountView(msg.path, msg.text);
 }
 
@@ -340,6 +427,14 @@ function onSaved(msg) {
   const ed = editors.get(msg.path);
   if (!ed) return;
   ed.dirty = false;
+  drafts.delete(msg.path); // the edits are now on disk — no draft to restore
+  // reconcile edited marks against the just-saved content (both the on-disk mark
+  // and the session buffer mark): reverting then saving clears the dot
+  const savedText = ed.view ? ed.view.state.doc.toString() : undefined;
+  if (savedText != null && window.__cg) {
+    if (typeof window.__cg.markDiskContent === "function") window.__cg.markDiskContent(msg.path, savedText);
+    if (typeof window.__cg.setBufferEdited === "function") window.__cg.setBufferEdited(msg.path, savedText);
+  }
   setStatus(ed, t("ed_saved"), "ok");
   setTimeout(() => {
     if (editors.get(msg.path) === ed && !ed.dirty) setStatus(ed, "", "");
@@ -352,6 +447,11 @@ function onSaved(msg) {
  * which case it warns instead of clobbering the user's work.
  */
 function onExternalChange(msg) {
+  // the on-disk content changed → reconcile the persisted mark against it
+  // (content-based: reverting the file to its original clears the dot)
+  if (window.__cg && typeof window.__cg.markDiskContent === "function") {
+    window.__cg.markDiskContent(msg.path, msg.text);
+  }
   const ed = editors.get(msg.path);
   if (!ed || !ed.view) return;
   if (ed.dirty) {
@@ -360,10 +460,21 @@ function onExternalChange(msg) {
   }
   const cur = ed.view.state.doc.toString();
   if (cur === msg.text) return;
-  ed.view.dispatch({
-    changes: { from: 0, to: ed.view.state.doc.length, insert: msg.text ?? "" },
-  });
+  // host-driven update: suppress the docChanged handler so it isn't mirrored back
+  ed.applyingExternal = true;
+  try {
+    ed.view.dispatch({
+      changes: { from: 0, to: ed.view.state.doc.length, insert: msg.text ?? "" },
+    });
+  } finally {
+    ed.applyingExternal = false;
+  }
+  cancelLiveSync(msg.path);
   ed.dirty = false;
+  // the buffer now equals the on-disk text — clear the session mark if pristine
+  if (window.__cg && typeof window.__cg.setBufferEdited === "function") {
+    window.__cg.setBufferEdited(msg.path, msg.text);
+  }
   setStatus(ed, t("ed_updated"), "muted");
 }
 
