@@ -22,11 +22,13 @@ jobs:
 
       - run: npm ci
 
-      - name: Type-check
-        run: npm run typecheck
-
+      # Build first: esbuild generates src/extension/generated/webview-template
+      # (+ its .d.cts), which extension.ts imports and tsc needs to type-check.
       - name: Production build
         run: npm run build:prod
+
+      - name: Type-check
+        run: npm run typecheck
 
       - name: Package (smoke test)
         run: npx --no-install @vscode/vsce package --no-dependencies -o codegraph-studio.vsix

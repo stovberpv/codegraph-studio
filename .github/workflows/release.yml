@@ -34,6 +34,12 @@ jobs:
 
       - run: npm ci
 
+      # Build first: esbuild generates src/extension/generated/webview-template
+      # (+ its .d.cts), which extension.ts imports and tsc needs to type-check.
+      # This also produces the dist/ that the package step below bundles.
+      - name: Production build
+        run: npm run build:prod
+
       - name: Type-check
         run: npm run typecheck
 
@@ -57,11 +63,9 @@ jobs:
           echo "::error::VSCE_PAT secret is not set. Add it in Settings → Secrets and variables → Actions."
           exit 1
 
-      - name: Build & package
+      - name: Package
         if: steps.tag.outputs.exists == 'false'
-        run: |
-          npm run build:prod
-          npx --no-install @vscode/vsce package --no-dependencies -o "codegraph-studio-${{ steps.v.outputs.version }}.vsix"
+        run: npx --no-install @vscode/vsce package --no-dependencies -o "codegraph-studio-${{ steps.v.outputs.version }}.vsix"
 
       - name: Publish to VS Code Marketplace
         if: steps.tag.outputs.exists == 'false'
