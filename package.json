@@ -88,9 +88,10 @@
     "serve": "tsx src/server/serve.ts",
     "graph": "npm run build && tsx src/core/parse.ts && tsx src/server/serve.ts",
     "build": "node scripts/esbuild.mjs",
+    "build:prod": "node scripts/esbuild.mjs --minify",
     "watch": "node scripts/esbuild.mjs --watch",
     "typecheck": "tsc --noEmit",
-    "package": "npm run build && vsce package --no-dependencies --allow-missing-repository"
+    "package": "npm run build:prod && vsce package --no-dependencies --allow-missing-repository"
   },
   "dependencies": {
     "@codemirror/commands": "^6.8.0",

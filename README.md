@@ -19,8 +19,8 @@ while the graph, links, zoom, and pan stay live around it.
 https://github.com/stovberpv/codegraph-studio/assets/<id>/<demo.mp4>
 -->
 
-![Codegraph Studio — call graph on the canvas](docs/media/hero.png)
-<!-- TODO(preview): add docs/media/hero.png -->
+![Codegraph Studio — call graph on the canvas](media/hero.png)
+<!-- TODO(preview): add media/hero.png -->
 
 ---
 
@@ -64,7 +64,7 @@ methods, and dependency injection through constructors and fields.
 <!--
 | Files layout | Folder islands | On-canvas editor |
 | --- | --- | --- |
-| ![](docs/media/layout-files.png) | ![](docs/media/layout-folders.png) | ![](docs/media/editor.png) |
+| ![](media/layout-files.png) | ![](media/layout-folders.png) | ![](media/editor.png) |
 -->
 
 ## Requirements
@@ -81,8 +81,7 @@ npm install
 npm run package        # produces codegraph-studio-<version>.vsix
 ```
 
-Then in VS Code: **Extensions: Install from VSIX…** and pick the file. Or press
-**Run and Debug → Run Codegraph Studio Extension** to launch a dev host.
+Then in VS Code: **Extensions: Install from VSIX…** and pick the file.
 
 <!-- TODO(marketplace): add Marketplace install once published -->
 
@@ -117,17 +116,6 @@ Then in VS Code: **Extensions: Install from VSIX…** and pick the file. Or pres
   workspace-package aliases within the project are.
 - At strong zoom-out, editor text is scaled (a deliberate trade-off).
 - No IntelliSense in the on-canvas editor — syntax highlighting only.
-
-## Contributing & development
-
-Building the extension, the project layout, standalone (browser) mode, and the
-internals live in the developer docs:
-
-- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — structure, how it works, build,
-  and standalone mode.
-- [docs/INVARIANTS.md](docs/INVARIANTS.md) — contracts that must hold.
-- [docs/GLOSSARY.md](docs/GLOSSARY.md) — shared vocabulary.
-- [docs/UI_TOKENS.md](docs/UI_TOKENS.md) — colors, spacing, and canvas metrics.
 
 ## License
 

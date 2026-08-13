@@ -22,6 +22,23 @@ const require = createRequire(import.meta.url);
 const here = path.dirname(fileURLToPath(import.meta.url));
 const root = path.join(here, "..");
 const watch = process.argv.includes("--watch");
+// Production build (npm run package): minify every bundle and skip sourcemaps.
+// Why: the packaged VSIX ships the bundled TypeScript compiler in parse-worker
+// (~9.5mb unminified); minifying roughly halves it. `.vscodeignore` already
+// drops *.map, so prod sourcemaps would only bloat dist on disk. `legalComments:
+// "eof"` keeps third-party license notices (TypeScript/CodeMirror) at the file
+// end instead of dropping them.
+const prod = process.argv.includes("--minify") || process.env.NODE_ENV === "production";
+
+/** Applies the shared prod/dev knobs (minify, sourcemap, legal comments) to an esbuild config. */
+function withMode(opts) {
+  return {
+    ...opts,
+    minify: prod,
+    sourcemap: prod ? false : true,
+    legalComments: prod ? "eof" : "inline",
+  };
+}
 
 const webviewSrc = path.join(root, "src", "webview");
 const templatePath = path.join(root, "src", "extension", "templates", "webview.pug");
@@ -95,7 +112,6 @@ const extensionOpts = {
   format: "cjs",
   target: "node18",
   external: ["vscode"],
-  sourcemap: true,
   logLevel: "info",
   banner: {
     js: 'var import_meta_url = require("url").pathToFileURL(__filename).href;',
@@ -114,7 +130,6 @@ const workerOpts = {
   format: "cjs",
   target: "node18",
   external: ["vscode"],
-  sourcemap: true,
   logLevel: "info",
   banner: {
     js: 'var import_meta_url = require("url").pathToFileURL(__filename).href;',
@@ -131,7 +146,6 @@ const editorOpts = {
   platform: "browser",
   format: "iife",
   target: "es2020",
-  sourcemap: true,
   logLevel: "info",
 };
 
@@ -144,21 +158,20 @@ const viewerOpts = {
   platform: "browser",
   format: "iife",
   target: "es2020",
-  sourcemap: true,
   logLevel: "info",
 };
 
 async function buildOnce() {
   compileTemplate();
   await Promise.all([
-    esbuild.build(extensionOpts),
-    esbuild.build(workerOpts),
-    esbuild.build(editorOpts),
-    esbuild.build(viewerOpts),
+    esbuild.build(withMode(extensionOpts)),
+    esbuild.build(withMode(workerOpts)),
+    esbuild.build(withMode(editorOpts)),
+    esbuild.build(withMode(viewerOpts)),
   ]);
   copyStatic();
   renderStandalone();
-  console.log("build ok");
+  console.log(prod ? "build ok (minified)" : "build ok");
 }
 
 async function run() {
@@ -167,10 +180,10 @@ async function run() {
     return;
   }
   compileTemplate();
-  const ctxExt = await esbuild.context(extensionOpts);
-  const ctxWorker = await esbuild.context(workerOpts);
-  const ctxEd = await esbuild.context(editorOpts);
-  const ctxViewer = await esbuild.context(viewerOpts);
+  const ctxExt = await esbuild.context(withMode(extensionOpts));
+  const ctxWorker = await esbuild.context(withMode(workerOpts));
+  const ctxEd = await esbuild.context(withMode(editorOpts));
+  const ctxViewer = await esbuild.context(withMode(viewerOpts));
   await Promise.all([ctxExt.watch(), ctxWorker.watch(), ctxEd.watch(), ctxViewer.watch()]);
   copyStatic();
   renderStandalone();
