@@ -19,12 +19,44 @@ canvas** in an embedded editor (syntax highlighting, save via the workspace),
 while the graph, links, zoom, and pan stay live around it.
 
 <p align="center">
-  <img alt="Codegraph Studio — interactive call graph demo" src="https://raw.githubusercontent.com/stovberpv/codegraph-studio/main/media/preview.gif" width="900">
+  <a href="https://github.com/stovberpv/codegraph-studio/blob/main/media/preview.mp4">
+    <img alt="Codegraph Studio — interactive call graph demo" src="https://raw.githubusercontent.com/stovberpv/codegraph-studio/main/media/preview.gif" width="900">
+  </a>
 </p>
 
 <p align="center">
-  <a href="https://raw.githubusercontent.com/stovberpv/codegraph-studio/main/media/preview.mp4">▶ Watch the full-quality MP4</a>
+  <a href="https://github.com/stovberpv/codegraph-studio/blob/main/media/preview.mp4">▶ Watch the full-quality MP4</a>
 </p>
+
+## Screenshots
+
+Cards are files, curved arrows are calls. Hover a card to light its neighbors;
+open several editors on the canvas and keep the map around them.
+
+<p align="center">
+  <img alt="Call graph — files as cards, calls as curved arrows" src="https://raw.githubusercontent.com/stovberpv/codegraph-studio/main/media/screenshots/call-graph.png" width="900">
+</p>
+<p align="center"><em>Call graph — 196 files, ~1000 functions, ~1800 links</em></p>
+
+<p align="center">
+  <img alt="Hover highlight — neighbors and links light up, the rest dim" src="https://raw.githubusercontent.com/stovberpv/codegraph-studio/main/media/screenshots/hover-links.png" width="900">
+</p>
+<p align="center"><em>Hover — the focused card and its links stay bright</em></p>
+
+<p align="center">
+  <img alt="Folder islands — files clustered by directory with island backdrops" src="https://raw.githubusercontent.com/stovberpv/codegraph-studio/main/media/screenshots/folder-islands.png" width="900">
+</p>
+<p align="center"><em>Folder islands — directory clusters with their own chrome</em></p>
+
+<p align="center">
+  <img alt="Expanded card — function list inside a file" src="https://raw.githubusercontent.com/stovberpv/codegraph-studio/main/media/screenshots/expanded-card.png" width="900">
+</p>
+<p align="center"><em>Expanded card — functions in the file, still on the map</em></p>
+
+<p align="center">
+  <img alt="On-canvas editor — CodeMirror overlay with the graph behind it" src="https://raw.githubusercontent.com/stovberpv/codegraph-studio/main/media/screenshots/on-canvas-editor.png" width="900">
+</p>
+<p align="center"><em>On-canvas editor — syntax highlighting, save via the workspace; open more than one card at a time</em></p>
 
 ---
 

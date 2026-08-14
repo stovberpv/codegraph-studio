@@ -155,8 +155,10 @@ npm run package
 - [ ] `VSCE_PAT` (and optionally `OVSX_PAT`) set as GitHub Actions secrets.
 - [ ] `README.md` renders correctly (images use absolute
       `raw.githubusercontent.com` URLs so they show on the Marketplace).
-- [ ] The `media/preview.gif` / `media/preview.mp4` referenced by the README are
-      committed and pushed to `main`.
+- [ ] `media/preview.gif` stays **under ~800 KB** (the gallery image proxy
+      often drops larger GIFs as a broken image). Keep `media/preview.mp4` and
+      `media/screenshots/*.png` committed on `main`. The MP4 link in the README
+      should point at GitHub’s **blob** viewer (inline player), not `raw.`.
 
 ---
 
@@ -169,6 +171,8 @@ npm run package
   Bump it and merge again.
 - **README images missing on the Marketplace** — the Marketplace only renders
   images served over HTTPS. Keep using absolute `raw.githubusercontent.com`
-  URLs, not repo-relative paths.
+  URLs, not repo-relative paths. Animated previews must be a **GIF under
+  ~800 KB**; a larger GIF shows as a broken image. Do not embed `<video>` —
+  link the GIF/poster to the GitHub blob URL for `media/preview.mp4`.
 - **Release workflow did nothing after a merge** — expected when the version was
   unchanged (a `::notice::` says it skipped). Bump the version to release.
