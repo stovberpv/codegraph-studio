@@ -130,7 +130,7 @@ instead. The toast is `pointer-events: none` and never persisted.
 | `ICON_PX` | 12 | icon glyph size |
 | `ICON_ZOOM` | 0.3 | below this zoom, header icons are hidden |
 | `CTRL_GAP` | 4 | gap between controls |
-| `COLLIDE_GAP` | 42 | air between cards |
+| `COLLIDE_GAP` | 42 | air between cards (AABB pass after layout, save restore, expand, editor commit) |
 | `FOLDER_HEAD` | 24 | folder header height |
 | `FOLDER_PAD` | 28 | air around files inside an island |
 | `FOLDER_CARD_W` × `FOLDER_CARD_H` | 260 × 60 | collapsed folder card |
@@ -139,6 +139,14 @@ instead. The toast is `pointer-events: none` and never persisted.
 
 - Idle edge stroke: `rgba(120,135,150,0.26)` (dimmed to `0.10` when something is
   focused). Highlighted edge/arrow: `rgba(90,160,255,0.9–0.95)`.
+- Ports are the four side midpoints of each endpoint box (buried ports skipped).
+  Each pair gets one cubic with stubs along the outward normals: facing ports
+  use `min(dist/2, along)`; a detour uses `0.25 × dist`. If the chord is
+  nearly collinear with the stubs (long T–B / L–R), both handles shift
+  perpendicularly by `0.12 × dist` so the cubic bows instead of reading as a
+  line. The picker minimizes one cost: clips through a card, then path length,
+  exit kink, facing gap tighter than `COLLIDE_GAP`, and a detour tax of one
+  card width. The last pair sticks while dragging so the curve does not flicker.
 - Card fill uses a per-file hue: `hsla(hue, 34%, 17%, 0.72)` (dimmed
   `22%/13%/0.5`); border `hsla(hue, 45%, 45%, 0.75)`.
 - Zen mode multiplies each card's (and its functions') saturation by 0 for

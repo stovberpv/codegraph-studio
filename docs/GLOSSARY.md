@@ -28,7 +28,8 @@ comments, UI, and docs.
   **Folder mode** clusters by directory (and draws the island backdrops);
   **files mode** clusters by **call-graph community** (Louvain, `community.js`),
   so files that call each other land on the same island regardless of directory,
-  and a repo-wide util no longer anchors the center of one globe.
+  and a repo-wide util no longer anchors the center of one globe. A final AABB
+  pass (`COLLIDE_GAP`) unsticks any cards that still overlap after packing.
 - **Unit** — a focusable entity for follow/lazy modes: a file group, a collapsed
   folder card, or an expanded folder island (which focuses the whole folder).
   Adjacency between file/collapsed-folder units is `unitAdj`.
@@ -50,7 +51,8 @@ comments, UI, and docs.
 - **Follow mode** — the whole map is visible; clicking a unit shows only it and
   its direct neighbors; clicking the background restores the map. Clicking a
   folder (collapsed card or expanded island) follows the whole folder — its files
-  and their neighbors.
+  and their neighbors. Open editors and expanded cards use the same visibility
+  as their file: out of the neighborhood they hide, they do not stay floating.
 - **Lazy observation** — all files stay visible but edges are hidden; clicking a
   unit reveals just its incoming/outgoing edges. Clicking a folder (collapsed card
   or expanded island) reveals the folder's cross-folder edges.
@@ -81,8 +83,9 @@ comments, UI, and docs.
   becomes visible it opens the canvas panel and closes the sidebar — a required
   compromise so the icon can launch the graph without a welcome side menu.
 - **Start screen** — centered canvas overlay (extension only) with **Analyze
-  current project** and **Choose folder**; shown until a root is chosen. Not
-  rendered in standalone mode.
+  current project** and **Choose folder**. The host sends `{ type: "start" }`
+  only when there is no session-cached graph; until that message (or a `graph`
+  replay) the webview shows the loading overlay. Not rendered in standalone mode.
 - **Parse worker** — a worker thread (`dist/parse-worker.cjs`) that runs
   `buildGraph` off the host event loop; the host can cancel it and only the
   latest run's result is used.

@@ -3,10 +3,10 @@
  * its editing/expanded/collapsed state and react to editor open/close/resize.
  */
 import { statsEl } from "./dom.js";
-import { markDirty } from "./state.js";
+import { state, markDirty } from "./state.js";
 import { COLLAPSED_H, COLLAPSED_W, EDIT_H, EDIT_MIN_H, EDIT_MIN_W, EDIT_W } from "./constants.js";
 import { t } from "./i18n.js";
-import { layoutInner } from "./layout.js";
+import { layoutInner, separateOverlapping } from "./layout.js";
 import { rebuildRenderEdges } from "./edges.js";
 import { saveLayout } from "./persistence.js";
 
@@ -37,15 +37,15 @@ export function openEditor(g) {
   statsEl.textContent = t("edit_only_vscode");
 }
 
-/** React to editor open/close: resize card, refresh edges, and save. */
+/** React to editor open/close: resize card, push neighbors apart, refresh edges. */
 export function onEditingChange(g) {
   if (!g) return;
   applySize(g);
   // Leaving edit mode shrinks the card back to its expanded width; re-flow the
   // function rows so their pills track the card and never overflow it.
   if (g.expanded) layoutInner(g);
-  g.cx = g.x + g.w / 2;
-  g.cy = g.y + g.h / 2;
+  // Keep this card's top-left; neighbors move (same as expand).
+  separateOverlapping(state.groups, 60, new Set([g]));
   rebuildRenderEdges();
   saveLayout();
   markDirty();
@@ -53,9 +53,9 @@ export function onEditingChange(g) {
 
 /**
  * Set the edit-mode size of a card from the overlay's resize grip.
- * `w`/`h` are world-space; clamped to the minimums. The edge topology does not
- * change, so only geometry + repaint are needed live; `commit` persists the
- * new size when the drag ends.
+ * `w`/`h` are world-space; clamped to the minimums. Live drag only updates
+ * geometry (edges reattach on the next paint). On `commit`, neighbors are
+ * pushed apart (`COLLIDE_GAP`) and the size is persisted.
  */
 export function setEditorSize(g, w, h, commit) {
   if (!g || !g.editing) return;
@@ -65,5 +65,8 @@ export function setEditorSize(g, w, h, commit) {
   g.cx = g.x + g.w / 2;
   g.cy = g.y + g.h / 2;
   markDirty();
-  if (commit) saveLayout();
+  if (commit) {
+    separateOverlapping(state.groups, 60, new Set([g]));
+    saveLayout();
+  }
 }

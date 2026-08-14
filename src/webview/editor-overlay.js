@@ -9,8 +9,11 @@ import { defaultKeymap, history, historyKeymap, indentWithTab } from "@codemirro
 import { javascript } from "@codemirror/lang-javascript";
 import { oneDark } from "@codemirror/theme-one-dark";
 import { syntaxHighlighting, defaultHighlightStyle } from "@codemirror/language";
+import { ACTIONS, HEADER_H } from "./viewer/constants.js";
+import { ICON_D } from "./viewer/icon-paths.js";
 
 const MAX_OPEN = 4;
+let zTop = 1;
 /** @type {Map<string, { el: HTMLElement, view: EditorView|null, dirty: boolean, path: string, openedAt: number }>} */
 const editors = new Map();
 /** queue of paths awaiting fileContent */
@@ -128,16 +131,55 @@ function setEditing(g, on) {
   markViewerDirty();
 }
 
+function lucideSvg(name) {
+  const paths = ICON_D[name] || [];
+  return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${paths.map((d) => `<path d="${d}"/>`).join("")}</svg>`;
+}
+
+function chromeIcon(g, action) {
+  if (action === "edit") return "squarePen";
+  if (action === "pin") return "pin";
+  if (action === "hideFile") return "eyeOff";
+  if (action === "hideIncoming") return "arrowRightToLine";
+  if (action === "hideOutgoing") return "arrowRightFromLine";
+  return g.expanded ? "chevronUp" : "chevronDown";
+}
+
+function chromeTitle(g, action) {
+  if (action === "edit") return g.editing ? t("ctrl_edit_collapse") : t("ctrl_edit_open");
+  if (action === "pin") return g.pinned ? t("ctrl_unpin") : t("ctrl_pin");
+  if (action === "hideFile") return t("ctrl_hide_file");
+  if (action === "hideIncoming") return g.hideIncoming ? t("ctrl_show_incoming") : t("ctrl_hide_incoming");
+  if (action === "hideOutgoing") return g.hideOutgoing ? t("ctrl_show_outgoing") : t("ctrl_hide_outgoing");
+  return g.expanded ? t("ctrl_collapse") : t("ctrl_expand");
+}
+
+/** Bring this overlay above other open editors (headers stack with the body). */
+function raise(path) {
+  const ed = editors.get(path);
+  if (!ed) return;
+  ed.el.style.zIndex = String(++zTop);
+}
+
 /**
- * Builds the overlay shell DOM (bar, title, status, buttons, body) for a path.
+ * Builds the overlay shell DOM (chrome + bar + body) for a path.
  * Why: input events are stopped from reaching the canvas so typing/scrolling in
- * the editor doesn't pan or zoom the graph; ⌘/Ctrl+S saves.
+ * the editor doesn't pan or zoom the graph; ⌘/Ctrl+S saves. The chrome row is
+ * the same card header (ext + controls) so overlapping editors cannot cover it.
  */
 function makeShell(path) {
   const el = document.createElement("div");
   el.className = "cg-editor";
   el.dataset.path = path;
+  const chromeBtns = ACTIONS.map(
+    (action) =>
+      `<button type="button" class="cg-editor-ctrl" data-action="${action}"></button>`,
+  ).join("");
   el.innerHTML = `
+    <div class="cg-editor-chrome">
+      <span class="cg-editor-ext"></span>
+      ${chromeBtns}
+    </div>
     <div class="cg-editor-bar">
       <span class="cg-editor-title"></span>
       <span class="cg-editor-status"></span>
@@ -148,6 +190,8 @@ function makeShell(path) {
     <div class="cg-editor-resize" title="${t("ed_resize_title")}" aria-hidden="true"></div>
   `;
   el.querySelector(".cg-editor-title").textContent = path.split("/").pop() || path;
+
+  el.addEventListener("pointerdown", () => raise(path));
 
   // don't forward canvas zoom/pan events
   const stop = (e) => e.stopPropagation();
@@ -176,9 +220,79 @@ function makeShell(path) {
     close(path);
   });
 
+  attachHeaderDrag(el, path);
+  for (const btn of el.querySelectorAll(".cg-editor-ctrl")) {
+    btn.addEventListener("click", (e) => {
+      e.preventDefault();
+      const g = findGroup(path);
+      if (g) window.__cg?.runControl?.(g, btn.dataset.action);
+    });
+  }
+
   attachResize(el, path);
 
   return el;
+}
+
+/** Paint ext + control icons to match the canvas card header. */
+function refreshChrome(el, g) {
+  if (!g) return;
+  const ext = el.querySelector(".cg-editor-ext");
+  if (ext) ext.textContent = g.ext || "";
+  for (const btn of el.querySelectorAll(".cg-editor-ctrl")) {
+    const action = btn.dataset.action;
+    const name = chromeIcon(g, action);
+    const label = chromeTitle(g, action);
+    const active =
+      (action === "edit" && g.editing) ||
+      (action === "pin" && g.pinned) ||
+      (action === "hideIncoming" && g.hideIncoming) ||
+      (action === "hideOutgoing" && g.hideOutgoing);
+    btn.title = label;
+    btn.classList.toggle("active", !!active);
+    if (btn.dataset.icon !== name) {
+      btn.dataset.icon = name;
+      btn.innerHTML = lucideSvg(name);
+    }
+  }
+}
+
+/**
+ * Drag the card from overlay chrome / title bar. The overlay stops mouse
+ * bubbling so the canvas window listeners never see the gesture; pointer
+ * capture on the handle drives move/up the same way the resize grip does.
+ */
+function attachHeaderDrag(el, path) {
+  const handles = [el.querySelector(".cg-editor-chrome"), el.querySelector(".cg-editor-bar")].filter(Boolean);
+  for (const handle of handles) {
+    handle.addEventListener("pointerdown", (e) => {
+      if (e.target.closest("button")) return;
+      e.preventDefault();
+      const g = findGroup(path);
+      if (!g || g.pinned) return;
+      window.__cg?.beginGroupDrag?.(g, e);
+      try {
+        handle.setPointerCapture(e.pointerId);
+      } catch {
+        /* capture unsupported — move/up still fire on the handle while over it */
+      }
+      const onMove = (ev) => window.__cg?.continueGroupDrag?.(ev);
+      const onUp = (ev) => {
+        handle.removeEventListener("pointermove", onMove);
+        handle.removeEventListener("pointerup", onUp);
+        handle.removeEventListener("pointercancel", onUp);
+        try {
+          if (handle.hasPointerCapture?.(ev.pointerId)) handle.releasePointerCapture(ev.pointerId);
+        } catch {
+          /* already released */
+        }
+        window.__cg?.endGroupDrag?.(ev);
+      };
+      handle.addEventListener("pointermove", onMove);
+      handle.addEventListener("pointerup", onUp);
+      handle.addEventListener("pointercancel", onUp);
+    });
+  }
 }
 
 /**
@@ -246,6 +360,7 @@ function open(g) {
     const ed = editors.get(path);
     ed.openedAt = Date.now();
     if (ed.view) ed.view.focus();
+    raise(path);
     setEditing(g, true);
     sync();
     return;
@@ -270,6 +385,7 @@ function open(g) {
   const el = makeShell(path);
   root.appendChild(el);
   editors.set(path, { el, view: null, dirty: false, path, openedAt: Date.now() });
+  raise(path);
   setEditing(g, true);
   setStatus(editors.get(path), t("ed_loading"), "muted");
   pending.add(path);
@@ -296,6 +412,7 @@ function mountView(path, text) {
     extensions: [
       lineNumbers(),
       highlightActiveLine(),
+      EditorView.lineWrapping,
       history(),
       javascript({ typescript: true }),
       oneDark,
@@ -319,7 +436,11 @@ function mountView(path, text) {
       }),
       EditorView.theme({
         "&": { height: "100%", fontSize: "12px" },
-        ".cm-scroller": { overflow: "auto", fontFamily: "ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" },
+        ".cm-scroller": {
+          overflowX: "hidden",
+          overflowY: "auto",
+          fontFamily: "ui-monospace, SFMono-Regular, Menlo, Consolas, monospace",
+        },
         ".cm-content": { caretColor: "#e6edf3" },
       }),
     ],
@@ -480,26 +601,31 @@ function onExternalChange(msg) {
 
 /**
  * Positions overlays according to the canvas camera (scale with top-left origin).
- * The editor occupies the card body under the header (HEADER_H = 24).
+ * The overlay covers the whole card, including HEADER_H, so stacking z-index
+ * keeps one card's header above another card's body.
+ * Hidden when the card itself is hidden (follow / filter / folder collapse) —
+ * the overlay stays mounted so it returns with the card.
  * Why: keeps each overlay glued to its card as the user pans/zooms the graph.
  */
 function sync() {
-  const HEADER_H = 24;
   const cam = window.__cg?.cam;
   if (!cam) return;
+  const cardVisible = window.__cg?.groupVisible;
   for (const [path, ed] of editors) {
     const g = findGroup(path);
-    if (!g || !g.editing) {
+    const show = g && g.editing && (typeof cardVisible !== "function" || cardVisible(g));
+    if (!show) {
       ed.el.style.display = "none";
       continue;
     }
     ed.el.style.display = "flex";
+    refreshChrome(ed.el, g);
     const left = g.x * cam.scale + cam.x;
-    const top = (g.y + HEADER_H) * cam.scale + cam.y;
+    const top = g.y * cam.scale + cam.y;
     ed.el.style.left = left + "px";
     ed.el.style.top = top + "px";
     ed.el.style.width = g.w + "px";
-    ed.el.style.height = Math.max(40, g.h - HEADER_H) + "px";
+    ed.el.style.height = Math.max(HEADER_H + 40, g.h) + "px";
     ed.el.style.transform = `scale(${cam.scale})`;
     ed.el.style.transformOrigin = "top left";
   }

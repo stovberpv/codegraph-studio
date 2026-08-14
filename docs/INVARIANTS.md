@@ -20,16 +20,19 @@ changes.
 
 Canonical message set. Extend deliberately and reflect changes here.
 
-- host → webview: `graph`, `busy`, `progress`, `fileContent`, `saved`, `error`, `externalChange`
+- host → webview: `graph`, `busy`, `progress`, `start`, `fileContent`, `saved`, `error`, `externalChange`
 - webview → host: `ready`, `openFile`, `editFile`, `saveFile`, `rebuild`, `pickFolder`
 
-The webview sends `ready` on load. The host does **not** auto-parse on `ready`
-unless a command already set `pendingRoot` (Parse Folder… / Reparse Workspace
-before the panel existed). Failing that, if a graph was already parsed earlier in
-the session the host replays the cached `lastGraph` (so closing and reopening the
-panel does not force a re-parse); the cache survives panel disposal and is cleared
-only on deactivate. Only a first-ever open with no cache shows the start screen,
-and the host then answers with `graph` after the user clicks **Analyze current project**
+The webview sends `ready` on load. Until the host answers, the extension
+webview shows the full-canvas loading overlay (`Loading…`), not the start
+buttons. The host does **not** auto-parse on `ready` unless a command already
+set `pendingRoot` (Parse Folder… / Reparse Workspace before the panel existed).
+Failing that, if a graph was already parsed earlier in the session the host
+replays the cached `lastGraph` (so closing and reopening the panel does not
+force a re-parse); the cache survives panel disposal and is cleared only on
+deactivate. Only a first-ever open with no cache gets `{ type: "start" }`, which
+hides the spinner and shows the start screen. The host then answers with
+`graph` after the user clicks **Analyze current project**
 (`rebuild` with no root → workspace folder) or **Choose folder** (`pickFolder` →
 `showOpenDialog` → `sendGraph`). The Project menu mirrors these two actions
 (**Reparse project** / **Open folder…**), so the same messages drive reparsing
@@ -112,17 +115,35 @@ This worker→host channel is not part of the webview protocol.
 - The `#editors` layer is offset from the top by `--toolbar-h`, exactly like
   `#canvas`; it is `pointer-events: none` and only its children capture input.
 - Each editor overlay follows the camera: `left = g.x*scale + cam.x`,
-  `top = (g.y + HEADER_H)*scale + cam.y`, with `transform: scale(cam.scale)` and
-  `transform-origin: top left`. World-space size stays in `g.w/g.h`.
+  `top = g.y*scale + cam.y`, with `transform: scale(cam.scale)` and
+  `transform-origin: top left`. World-space size stays in `g.w/g.h`. The overlay
+  covers the **whole card including the header**, so overlapping editors stack as
+  one unit (header stays above another card's body). Clicking an overlay raises
+  its z-index. Canvas skips drawing header chrome while `g.editing`.
+- An overlay is shown only while its card is `groupVisible` (the same follow /
+  lazy / glob / folder-collapse rules as the canvas card). Hidden overlays stay
+  mounted (`g.editing` unchanged) so they return when the card is shown again.
+  Horizontal overflow is clipped; the CodeMirror buffer wraps instead of growing
+  a scaled native scrollbar.
 - The edit card is user-resizable via a bottom-right grip. The grip's screen-pixel
   drag is divided by `cam.scale` into world units and stored as `g.editW/g.editH`
-  (clamped to `EDIT_MIN_W/EDIT_MIN_H`); `applySize` uses them in edit mode. Resize
-  only changes geometry, not edge topology, so a repaint suffices — no relayout.
+  (clamped to `EDIT_MIN_W/EDIT_MIN_H`); `applySize` uses them in edit mode. Live
+  resize only changes geometry (edges reattach on paint). On commit, neighbors
+  are pushed apart by `COLLIDE_GAP` (same AABB pass as expand) so the grown card
+  does not cover another file.
+- After force/island layout, and when a saved layout is applied, overlapping
+  card AABBs are separated (`COLLIDE_GAP`). Only pairs closer than the gap move,
+  so islands stay intact. Opening or closing the on-canvas editor uses the same
+  pass, pinning the resized card's top-left.
 - Function-row pills track the card width (`n.w = g.w - PAD*2`). Whenever a card's
   size changes while expanded, `layoutInner` must re-flow the rows so they never
   overflow the card — every `applySize` on an expanded card (including leaving edit
   mode in `onEditingChange`) is paired with `layoutInner`.
 - Editor input (wheel, pointer, keys) does not propagate to canvas zoom/pan.
+  Dragging the overlay header/title bar uses pointer capture on that handle
+  (same as the resize grip) and the viewer's `beginGroupDrag` / `continueGroupDrag`
+  / `endGroupDrag` APIs, because stopped mouse bubbling would otherwise freeze
+  the card under the cursor and never see `mouseup`.
 
 ## Card & folder controls
 

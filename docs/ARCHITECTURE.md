@@ -63,8 +63,10 @@ dist/                              # generated build output
   Activity Bar container contributes an empty **launch view**
   (`codegraph.launch`): its `WebviewViewProvider` opens the canvas panel and
   closes the sidebar, so the icon launches the graph without a side menu. The
-  panel shows a **start screen** (Analyze current project / Choose folder) until
-  the user picks a root; parsing does not start on webview `ready` alone.
+  panel shows a **start screen** (Analyze current project / Choose folder) only
+  when nothing has been parsed this session (`start` message). Reopening the
+  panel replays the cached graph behind the loading overlay. Parsing does not
+  start on webview `ready` alone.
 - **`src/extension/parse-worker.ts`** — a worker thread that runs `buildGraph`
   off the host event loop so the editor stays responsive; the host shows a
   cancellable progress spinner, streams coarse file-count progress into both the

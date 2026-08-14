@@ -116,6 +116,7 @@ export const LOCALES = {
 
     // viewer status / errors
     waiting_graph: "waiting for the graph…",
+    loading: "Loading…",
     analyzing: "analyzing project…",
     load_failed: "could not load graph.json — run it via serve.ts",
     rebuilding: "rebuilding…",

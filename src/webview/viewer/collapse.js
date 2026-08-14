@@ -4,7 +4,7 @@
  */
 import { state, markDirty } from "./state.js";
 import { applySize, openEditor } from "./sizing.js";
-import { applyCollisionShift, layoutInner, resolveCollisions } from "./layout.js";
+import { layoutInner, separateOverlapping } from "./layout.js";
 import { rebuildRenderEdges } from "./edges.js";
 import { saveLayout } from "./persistence.js";
 import { setHover } from "./interaction.js";
@@ -20,12 +20,7 @@ export function toggleExpand(g) {
   if (g.expanded) layoutInner(g);
 
   // push neighbors apart (do not move the expanded card)
-  for (const gg of state.groups) {
-    gg.cx = gg.x + gg.w / 2;
-    gg.cy = gg.y + gg.h / 2;
-  }
-  resolveCollisions(state.groups, 60, new Set([g]));
-  applyCollisionShift(state.groups);
+  separateOverlapping(state.groups, 60, new Set([g]));
 
   rebuildRenderEdges();
   saveLayout();
@@ -105,12 +100,7 @@ export function setAllExpanded(v) {
     g.y = ky;
     if (v) layoutInner(g);
   }
-  for (const g of state.groups) {
-    g.cx = g.x + g.w / 2;
-    g.cy = g.y + g.h / 2;
-  }
-  resolveCollisions(state.groups, 220);
-  applyCollisionShift(state.groups);
+  separateOverlapping(state.groups, 220);
   rebuildRenderEdges();
   saveLayout();
   fit();

@@ -12,7 +12,7 @@ import { ensureFolderBoxes } from "./folders.js";
 export function controlAt(wx, wy) {
   if (cam.scale <= ICON_ZOOM) return null; // icons are hidden when zoomed out — do not hit-test them
   for (const g of state.groups) {
-    if (!groupVisible(g)) continue;
+    if (!groupVisible(g) || g.editing) continue;
     // quick reject: controls only in the right part of the header
     if (wy < g.y || wy > g.y + HEADER_H || wx < g.x || wx > g.x + g.w) continue;
     for (const r of controlRects(g)) {
@@ -32,7 +32,7 @@ export function nodeAt(wx, wy) {
 /** Hit-test a draggable file card (header if expanded, whole if collapsed). */
 export function groupDragAt(wx, wy) {
   for (const g of state.groups) {
-    if (!groupVisible(g)) continue;
+    if (!groupVisible(g) || g.editing) continue;
     if (wx < g.x || wx > g.x + g.w) continue;
     if (g.expanded) {
       if (wy >= g.y && wy <= g.y + HEADER_H) return g;

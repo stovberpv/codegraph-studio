@@ -3,8 +3,8 @@
  * arrives via postMessage; in standalone it is fetched from graph.json. `build`
  * ingests the graph into nodes/edges and drives layout + saved-state restore.
  *
- * Extension launch shows `#start` until the user picks a root; `#loading` covers
- * in-flight parses after that.
+ * Extension launch shows `#loading` until the host answers `ready`: `start` if
+ * there is no session cache, `graph` to replay, or `busy` while a parse runs.
  */
 import { filterEl, statsEl, vscodeApi } from "./dom.js";
 import { state, nodes } from "./state.js";
@@ -20,13 +20,15 @@ import { fit } from "./fit.js";
 const loadingEl = document.getElementById("loading");
 const loadingLabelEl = loadingEl ? loadingEl.querySelector(".loading-label") : null;
 const startEl = document.getElementById("start");
+/** True while a `graph` message is waiting on a paint before `build`. */
+let applyingGraph = false;
 
 /** Show/hide the indeterminate spinner overlay while a parse is in flight. */
-export function showLoading(on) {
+export function showLoading(on, label) {
   if (loadingEl) loadingEl.hidden = !on;
-  // Reset the label to the idle text when the overlay is (re)shown; live parse
-  // progress from the host then enriches it (see the `progress` message).
-  if (on && loadingLabelEl) loadingLabelEl.textContent = t("analyzing");
+  // Reset the label when the overlay is (re)shown; live parse progress from the
+  // host then enriches it (see the `progress` message).
+  if (on && loadingLabelEl) loadingLabelEl.textContent = label || t("analyzing");
 }
 
 /** Show/hide the start-screen CTAs (extension only; absent in standalone HTML). */
@@ -37,6 +39,11 @@ function showStart(on) {
 /** Enrich the overlay label with live parse status (extension only). */
 function setLoadingLabel(text) {
   if (loadingLabelEl && text) loadingLabelEl.textContent = text;
+}
+
+/** Two rAFs so a revealed overlay actually paints before blocking `build`. */
+function afterPaint() {
+  return new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
 }
 
 /** Wire start-screen buttons once (extension only). */
@@ -55,8 +62,10 @@ export async function load() {
   if (vscodeApi) {
     window.addEventListener("message", onHostMessage);
     statsEl.textContent = t("waiting_graph");
-    showLoading(false);
-    showStart(true);
+    // Overlay is visible in the extension HTML; keep it until the host says
+    // `start` (no session cache) or `graph` (replay / fresh parse).
+    showLoading(true, t("loading"));
+    showStart(false);
     wireStartButtons();
     vscodeApi.postMessage({ type: "ready" });
     return;
@@ -78,9 +87,18 @@ export async function load() {
 function onHostMessage(ev) {
   const msg = ev && ev.data;
   if (!msg || typeof msg !== "object") return;
+  if (msg.type === "start") {
+    showLoading(false);
+    showStart(true);
+    return;
+  }
   if (msg.type === "busy") {
-    if (msg.busy) showStart(false);
-    showLoading(!!msg.busy);
+    if (msg.busy) {
+      showStart(false);
+      showLoading(true);
+    } else if (!applyingGraph) {
+      showLoading(false);
+    }
     return;
   }
   if (msg.type === "progress") {
@@ -90,10 +108,18 @@ function onHostMessage(ev) {
   }
   if (msg.type === "graph") {
     showStart(false);
+    showLoading(true, t("loading"));
     if (window.__cgEditor && typeof window.__cgEditor.closeAll === "function") {
       window.__cgEditor.closeAll();
     }
-    build(msg.graph);
+    applyingGraph = true;
+    afterPaint().then(() => {
+      try {
+        build(msg.graph);
+      } finally {
+        applyingGraph = false;
+      }
+    });
     return;
   }
   if (msg.type === "fileContent") {

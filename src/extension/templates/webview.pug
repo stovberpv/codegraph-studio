@@ -132,9 +132,9 @@ html(lang=lang)
           b= t.legend_edit_k
           = t.legend_edit_v
 
-    #loading.loading-overlay(hidden aria-live="polite")
+    #loading.loading-overlay(hidden=standalone aria-live="polite")
       .spinner(aria-hidden="true")
-      span.loading-label= t.analyzing
+      span.loading-label= standalone ? t.analyzing : t.loading
 
     //- transient toast for CPU-heavy in-canvas actions (heavy.js); shown only
     //- when an operation is predicted to block for ~1s+ (large graphs)

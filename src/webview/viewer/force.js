@@ -217,6 +217,22 @@ export function resolveCollisions(gs, passes, pinned) {
   }
 }
 
+/**
+ * Treat current top-left (`x`/`y`) as truth, push overlapping AABBs apart, and
+ * write top-left back. Use after expand / editor resize / restoring a save —
+ * not during `layout()`, where centers (`cx`/`cy`) are the source of truth
+ * and `x`/`y` may still be unset.
+ */
+export function separateOverlapping(gs, passes, pinned) {
+  if (!gs || gs.length < 2) return;
+  for (const g of gs) {
+    g.cx = g.x + g.w / 2;
+    g.cy = g.y + g.h / 2;
+  }
+  resolveCollisions(gs, passes, pinned);
+  applyCollisionShift(gs);
+}
+
 // Convert new centers (cx/cy) to top-left (x/y) and shift the card's functions
 // by the same delta — to keep their offsets relative to the file.
 /** Sync top-left from centers and move child functions by the same delta. */

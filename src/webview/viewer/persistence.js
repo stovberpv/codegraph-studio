@@ -5,7 +5,7 @@
 import { state, nodes, markDirty } from "./state.js";
 import { EDIT_H, EDIT_MIN_H, EDIT_MIN_W, EDIT_W } from "./constants.js";
 import { applySize } from "./sizing.js";
-import { layoutInner } from "./layout.js";
+import { layoutInner, separateOverlapping } from "./layout.js";
 
 /** Persist card/folder positions and collapsed/hidden flags to localStorage. */
 export function saveLayout() {
@@ -108,6 +108,9 @@ export function applySaved() {
       }
     }
   }
+  // Saved coordinates can stack (an older session, or a grown editor that was
+  // never separated). Unstick before the first paint.
+  separateOverlapping(state.groups, 80);
   markDirty();
   return true;
 }
