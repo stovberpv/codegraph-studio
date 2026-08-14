@@ -26,6 +26,10 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   (`COLLIDE_GAP`) so the grown card does not sit on top of another file.
   Relayout and restoring a saved layout run the same AABB pass, so stacked
   collapsed cards (tight inner springs, or an older save) unstick on load.
+- Reopening the panel with a session-cached graph shows the full-canvas
+  loading overlay (`Loading…`) instead of the start-screen buttons, then
+  restores the graph. The start CTAs appear only when nothing has been parsed
+  yet this session (`start` message).
 
 ## [0.1.1] - 2026-08-14
 

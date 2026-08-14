@@ -22,6 +22,7 @@ type HostToWebview =
   | { type: "graph"; graph: unknown }
   | { type: "busy"; busy: boolean }
   | { type: "progress"; text: string }
+  | { type: "start" }
   | { type: "fileContent"; path: string; text: string; language: string }
   | { type: "saved"; path: string }
   | { type: "error"; message: string }
@@ -307,7 +308,9 @@ async function handleMessage(
     if (lastGraph !== undefined) {
       log(`replaying cached graph for root=${lastRoot ?? "?"}`);
       post(panel, { type: "graph", graph: lastGraph });
+      return;
     }
+    post(panel, { type: "start" });
     return;
   }
 
