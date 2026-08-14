@@ -15,7 +15,8 @@ import { render } from "./render.js";
 import { load } from "./io.js";
 import { applySize, onEditingChange, openEditor, setEditorSize } from "./sizing.js";
 import { runControl, runFolderControl } from "./collapse.js";
-import { setFollowFocus, setLazyFocus } from "./visibility.js";
+import { beginGroupDrag, continueGroupDrag, endGroupDrag } from "./interaction.js";
+import { groupVisible, setFollowFocus, setLazyFocus } from "./visibility.js";
 import { setFollowMode, setLayoutMode, setLazyMode, setZenMode } from "./search-controls.js";
 import { clearBufferEdited, markDiskContent, noteBaseline, setBufferEdited } from "./edited.js";
 import { fit } from "./fit.js";
@@ -68,10 +69,14 @@ window.__cg = {
   openEditor,
   runFolderControl,
   runControl,
+  beginGroupDrag,
+  continueGroupDrag,
+  endGroupDrag,
   setLayoutMode,
   setFollowMode,
   setLazyMode,
   setZenMode,
+  groupVisible,
   setFollowFocus,
   setLazyFocus,
   noteBaseline,

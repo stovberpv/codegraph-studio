@@ -164,8 +164,8 @@ export function render() {
       ctx.stroke();
     }
 
-    if (cam.scale > 0.1) {
-      // divider under the header
+    if (cam.scale > 0.1 && !g.editing) {
+      // divider under the header (the editor overlay owns the header when open)
       ctx.lineWidth = 1 / cam.scale;
       ctx.strokeStyle = dim ? "rgba(70,80,92,0.35)" : `hsla(${g.hue},${40 * sat}%,40%,0.4)`;
       ctx.beginPath();
@@ -205,8 +205,8 @@ export function render() {
         }
       }
 
-      // body: file name without extension (skip when editor is open)
-      if (!g.editing) {
+      // body: file name without extension
+      {
         ctx.fillStyle = dim ? "#5b6672" : `hsl(${g.hue},${52 * sat}%,78%)`;
         ctx.font = "13px ui-monospace, monospace";
         ctx.save();

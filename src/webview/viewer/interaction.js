@@ -184,7 +184,86 @@ window.addEventListener("mousemove", (e) => {
   else hideTooltip();
 });
 
-window.addEventListener("mouseup", (e) => {
+window.addEventListener("mouseup", (e) => endDrag(e));
+
+canvas.addEventListener("dblclick", (e) => {
+  const local = localPos(e);
+  const w = screenToWorld(local.x, local.y);
+  if (controlAt(w.x, w.y) || folderControlAt(w.x, w.y)) return; // on a control — do not expand
+  const ent = entityAt(w.x, w.y);
+  if (ent && isGroup(ent)) toggleExpand(ent);
+  else if (ent && isFolder(ent)) runFolderControl(ent, "toggle");
+});
+
+canvas.addEventListener(
+  "wheel",
+  (e) => {
+    e.preventDefault();
+    const local = localPos(e);
+    const factor = Math.exp(-e.deltaY * 0.0015);
+    const newScale = Math.max(0.02, Math.min(cam.scale * factor, 4));
+    const wx = (local.x - cam.x) / cam.scale;
+    const wy = (local.y - cam.y) / cam.scale;
+    cam.scale = newScale;
+    cam.x = local.x - wx * newScale;
+    cam.y = local.y - wy * newScale;
+    markDirty();
+  },
+  { passive: false },
+);
+
+/** Pointer position relative to the canvas element. */
+function localPos(e) {
+  const r = canvas.getBoundingClientRect();
+  return { x: e.clientX - r.left, y: e.clientY - r.top };
+}
+
+/** Start dragging a file card (used by on-canvas editor chrome). */
+export function beginGroupDrag(g, e) {
+  if (!g || g.pinned) return;
+  const w = screenToWorld(localPos(e).x, localPos(e).y);
+  let set;
+  if (state.selection.has(g) && state.selection.size > 0) {
+    set = [...state.selection];
+  } else {
+    if (state.selection.size) markDirty();
+    state.selection.clear();
+    set = [g];
+  }
+  state.drag = { type: "group", groups: set, lastX: w.x, lastY: w.y, startSX: e.clientX, startSY: e.clientY };
+  canvas.classList.add("dragging");
+}
+
+/**
+ * Continue a card drag from overlay pointer events. Overlay chrome stops
+ * mouse bubbling, so the window mousemove listener never sees the gesture.
+ */
+export function continueGroupDrag(e) {
+  if (!state.drag || state.drag.type !== "group") return;
+  const w = screenToWorld(localPos(e).x, localPos(e).y);
+  const dx = w.x - state.drag.lastX,
+    dy = w.y - state.drag.lastY;
+  for (const g of state.drag.groups) {
+    if (g.pinned) continue;
+    g.x += dx;
+    g.y += dy;
+    for (const n of g.ids) {
+      n.x += dx;
+      n.y += dy;
+    }
+  }
+  state.drag.lastX = w.x;
+  state.drag.lastY = w.y;
+  markDirty();
+}
+
+/** Finish a card drag started from overlay chrome (idempotent if already ended). */
+export function endGroupDrag(e) {
+  endDrag(e);
+}
+
+/** Commit the in-flight pointer drag and clear `state.drag`. */
+function endDrag(e) {
   if (state.drag) {
     if (state.drag.type === "control") {
       runControl(state.drag.group, state.drag.action);
@@ -234,38 +313,6 @@ window.addEventListener("mouseup", (e) => {
   }
   state.drag = null;
   canvas.classList.remove("grabbing", "dragging");
-});
-
-canvas.addEventListener("dblclick", (e) => {
-  const local = localPos(e);
-  const w = screenToWorld(local.x, local.y);
-  if (controlAt(w.x, w.y) || folderControlAt(w.x, w.y)) return; // on a control — do not expand
-  const ent = entityAt(w.x, w.y);
-  if (ent && isGroup(ent)) toggleExpand(ent);
-  else if (ent && isFolder(ent)) runFolderControl(ent, "toggle");
-});
-
-canvas.addEventListener(
-  "wheel",
-  (e) => {
-    e.preventDefault();
-    const local = localPos(e);
-    const factor = Math.exp(-e.deltaY * 0.0015);
-    const newScale = Math.max(0.02, Math.min(cam.scale * factor, 4));
-    const wx = (local.x - cam.x) / cam.scale;
-    const wy = (local.y - cam.y) / cam.scale;
-    cam.scale = newScale;
-    cam.x = local.x - wx * newScale;
-    cam.y = local.y - wy * newScale;
-    markDirty();
-  },
-  { passive: false },
-);
-
-/** Pointer position relative to the canvas element. */
-function localPos(e) {
-  const r = canvas.getBoundingClientRect();
-  return { x: e.clientX - r.left, y: e.clientY - r.top };
 }
 
 /** Update hover entity and its neighbor set for edge/card highlighting. */

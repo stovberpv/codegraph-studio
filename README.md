@@ -86,7 +86,8 @@ methods, and dependency injection through constructors and fields.
 - **Two layouts** — gravity between files, or gravity within a folder then between
   folders (folder “islands”).
 - **Focus modes** — *Follow* (show a file and its direct links) and *Lazy
-  observation* (all files visible, links revealed on click).
+  observation* (all files visible, links revealed on click). Open editors hide
+  with their card.
 - **Per-card controls** — edit, pin, hide file, hide incoming/outgoing links,
   collapse/expand. Folders get their own header controls.
 - **Glob filter, search, isolated-node hiding.**

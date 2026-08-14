@@ -6,6 +6,19 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Fixed
+
+- On-canvas editors now follow the same Focus/Visibility rules as their cards
+  (follow neighborhood, glob filter, collapsed folder): they hide with the card
+  instead of leaving a headerless overlay behind.
+- Horizontal scrollbar in the on-canvas editor: long lines wrap inside the card
+  instead of overflowing a camera-scaled native scroller.
+- Overlapping on-canvas editors stack as a whole card (header stays above the
+  other file's body); clicking an editor brings it to front.
+- Dragging an open editor by its header actually moves and releases: pointer
+  capture on the chrome/title bar, so the overlay no longer swallows `mouseup`
+  and the card does not stick to the cursor.
+
 ## [0.1.1] - 2026-08-14
 
 ### Changed
