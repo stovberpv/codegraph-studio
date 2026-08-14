@@ -130,7 +130,7 @@ instead. The toast is `pointer-events: none` and never persisted.
 | `ICON_PX` | 12 | icon glyph size |
 | `ICON_ZOOM` | 0.3 | below this zoom, header icons are hidden |
 | `CTRL_GAP` | 4 | gap between controls |
-| `COLLIDE_GAP` | 42 | air between cards |
+| `COLLIDE_GAP` | 42 | air between cards (AABB pass after layout, save restore, expand, editor commit) |
 | `FOLDER_HEAD` | 24 | folder header height |
 | `FOLDER_PAD` | 28 | air around files inside an island |
 | `FOLDER_CARD_W` × `FOLDER_CARD_H` | 260 × 60 | collapsed folder card |

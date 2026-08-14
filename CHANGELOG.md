@@ -22,6 +22,10 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   from outward side midpoints so the cubic leaves and enters without clipping.
   Stub pull scales with port distance (`max(24, dist/2)`) so long links keep a
   visible bow instead of collapsing to a straight chord.
+- Opening or resizing an on-canvas editor pushes neighboring cards apart
+  (`COLLIDE_GAP`) so the grown card does not sit on top of another file.
+  Relayout and restoring a saved layout run the same AABB pass, so stacked
+  collapsed cards (tight inner springs, or an older save) unstick on load.
 
 ## [0.1.1] - 2026-08-14
 

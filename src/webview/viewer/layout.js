@@ -21,13 +21,13 @@ import { dirname, hashHue, splitName, textWidth } from "./utils.js";
 import { applySize } from "./sizing.js";
 import { buildFolders } from "./folders.js";
 import { detectCommunities } from "./community.js";
-import { applyCollisionShift, forceLayout, resolveCollisions } from "./force.js";
+import { applyCollisionShift, forceLayout, resolveCollisions, separateOverlapping } from "./force.js";
 
 // Resolution for files-mode community detection: higher → more, smaller islands.
 // 1.5 gave the most balanced archipelago on codebase-like graphs (see benchmark).
 const COMMUNITY_RESOLUTION = 1.5;
 
-export { applyCollisionShift, forceLayout, resolveCollisions };
+export { applyCollisionShift, forceLayout, resolveCollisions, separateOverlapping };
 
 /** Rebuild file cards from nodes and run force/folder layout. */
 export function layout() {
@@ -170,6 +170,11 @@ export function layout() {
     }
   }
 
+  // Island packing does not run a global card pass (it would smear clusters
+  // across island boxes). A final AABB pass only moves pairs closer than
+  // COLLIDE_GAP, so leftover stacks inside a tight cluster get unstuck.
+  resolveCollisions(state.groups, 80);
+
   for (const g of state.groups) {
     g.x = g.cx - g.w / 2;
     g.y = g.cy - g.h / 2;
@@ -214,6 +219,7 @@ function clusterIslands(gs, links, keyOf) {
     }
     const localLinks = links.filter((l) => keyOf(l.a) === key && keyOf(l.b) === key);
     forceLayout(list, localLinks, INNER);
+    resolveCollisions(list, 80);
   }
 
   // 2) each cluster's bbox (local coords) → rigid island box.
@@ -298,9 +304,9 @@ function clusterIslands(gs, links, keyOf) {
       g.vy = 0;
     }
   }
-  // intentionally do NOT call global resolveCollisions on cards — it would
-  // scramble clusters; overlaps are already gone inside (step 1) and between
-  // (step 4) islands.
+  // Global card collision runs once in `layout()` after this returns — not
+  // here, so island boxes stay rigid. Intra-cluster leftovers are unstuck
+  // there without a second force pass.
 }
 
 // Lay out functions inside an expanded card (vertical list).
