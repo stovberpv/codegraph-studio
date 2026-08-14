@@ -139,6 +139,11 @@ instead. The toast is `pointer-events: none` and never persisted.
 
 - Idle edge stroke: `rgba(120,135,150,0.26)` (dimmed to `0.10` when something is
   focused). Highlighted edge/arrow: `rgba(90,160,255,0.9–0.95)`.
+- Ports are chosen from the four side midpoints of each endpoint box so the cubic
+  leaves and enters on **outward** sides and does not clip either box; control
+  stubs pull along the side normals by `max(24, dist/2)` so long links keep a
+  visible bow. Falls back to dominant-axis attachment only when every side pair
+  is discarded (degenerate overlap).
 - Card fill uses a per-file hue: `hsla(hue, 34%, 17%, 0.72)` (dimmed
   `22%/13%/0.5`); border `hsla(hue, 45%, 45%, 0.75)`.
 - Zen mode multiplies each card's (and its functions') saturation by 0 for

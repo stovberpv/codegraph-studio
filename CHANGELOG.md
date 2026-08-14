@@ -18,6 +18,10 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Dragging an open editor by its header actually moves and releases: pointer
   capture on the chrome/title bar, so the overlay no longer swallows `mouseup`
   and the card does not stick to the cursor.
+- Call-graph curves no longer cut through their endpoint cards: ports are picked
+  from outward side midpoints so the cubic leaves and enters without clipping.
+  Stub pull scales with port distance (`max(24, dist/2)`) so long links keep a
+  visible bow instead of collapsing to a straight chord.
 
 ## [0.1.1] - 2026-08-14
 
