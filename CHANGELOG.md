@@ -6,6 +6,14 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.1.1] - 2026-08-14
+
+### Changed
+
+- Marketplace-safe demo GIF (under 800 KB) that links to the GitHub MP4 player,
+  plus README screenshots for the call graph, hover highlighting, folder
+  islands, expanded cards, and the on-canvas editor.
+
 ## [0.1.0] - 2026-08-13
 
 ### Added
@@ -27,5 +35,6 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Live rebuild and a cancellable background-worker parser with progress
   reporting.
 
-[Unreleased]: https://github.com/stovberpv/codegraph-studio/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/stovberpv/codegraph-studio/compare/v0.1.1...HEAD
+[0.1.1]: https://github.com/stovberpv/codegraph-studio/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/stovberpv/codegraph-studio/releases/tag/v0.1.0
