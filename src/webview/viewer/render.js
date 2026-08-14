@@ -17,6 +17,46 @@ import { ensureFolderBoxes } from "./folders.js";
 import { controlRects, drawIcon, folderControlRects, folderIconFor, iconFor } from "./icons.js";
 import { addCurve, drawArrow, roundRect } from "./edge-geometry.js";
 
+const lerp = (a, b, t) => a + (b - a) * t;
+
+function mixHex(a, b, t) {
+  const an = parseInt(a.slice(1), 16);
+  const bn = parseInt(b.slice(1), 16);
+  const r = Math.round(lerp(an >> 16, bn >> 16, t));
+  const g = Math.round(lerp((an >> 8) & 255, (bn >> 8) & 255, t));
+  const bl = Math.round(lerp(an & 255, bn & 255, t));
+  return `rgb(${r},${g},${bl})`;
+}
+
+function hoverDimTarget() {
+  const h = state.hoverEntity;
+  const dimHover = h && !(isFolder(h) && !h.collapsed);
+  return dimHover || state.highlight.size ? 1 : 0;
+}
+
+/** True while the rest-of-graph dim is still easing toward its target. */
+export function hoverNeedsTick() {
+  return Math.abs(state.hoverDim - hoverDimTarget()) > 0.002;
+}
+
+let hoverDimAt = 0;
+function stepHoverDim(now) {
+  const target = hoverDimTarget();
+  let dt;
+  if (!hoverDimAt) {
+    hoverDimAt = now;
+    dt = 0.016;
+  } else {
+    dt = Math.min(0.05, Math.max(0, (now - hoverDimAt) / 1000));
+    hoverDimAt = now;
+  }
+  const tau = target > state.hoverDim ? 0.07 : 0.12;
+  const k = 1 - Math.exp(-dt / Math.max(tau, 1e-4));
+  const next = state.hoverDim + (target - state.hoverDim) * k;
+  if (Math.abs(next - target) < 0.004) state.hoverDim = target;
+  else state.hoverDim = next;
+}
+
 /** Draw folder header control icons (and hover chrome) at sufficient zoom. */
 function drawFolderControls(f) {
   if (cam.scale <= ICON_ZOOM) return;
@@ -99,8 +139,10 @@ function drawFolder(f, isHover) {
 }
 
 /** Full scene draw: folders, cards, edges, functions, marquee, editor sync. */
-export function render() {
+export function render(now = performance.now()) {
   state.dirty = false;
+  stepHoverDim(now);
+  const dimAmt = state.hoverDim;
   const cw = canvas.clientWidth, ch = canvas.clientHeight;
   ctx.setTransform(1, 0, 0, 1, 0, 0);
   ctx.fillStyle = "#0e1116";
@@ -117,8 +159,6 @@ export function render() {
   };
   const inView = (x, y, w, h) => x + w >= view.x0 && x <= view.x1 && y + h >= view.y0 && y <= view.y1;
 
-  const active = state.hoverEntity || state.highlight.size;
-  // hovering an expanded folder does not dim files (it has no edge endpoints)
   const dimHover = state.hoverEntity && !(isFolder(state.hoverEntity) && !state.hoverEntity.collapsed);
 
   // folders: islands (expanded) and compact cards (collapsed)
@@ -139,22 +179,21 @@ export function render() {
     const isHover = g === state.hoverEntity;
     const isNeighbor = state.hoverNeighbors.has(g);
     const isMatch = state.highlightGroups.has(g);
-    const dim = (dimHover && !isHover && !isNeighbor) || (state.highlight.size && !isMatch);
+    const rest = (dimHover && !isHover && !isNeighbor) || (state.highlight.size && !isMatch);
+    const dim = rest ? dimAmt : 0;
     const edited = isEdited(g.path);
     // Zen mode: only edited files keep their hue; everything else desaturates
     const sat = state.zenMode && !edited ? 0 : 1;
 
     roundRect(g.x, g.y, g.w, g.h, 9);
-    ctx.fillStyle = dim ? `hsla(${g.hue},${22 * sat}%,13%,0.5)` : `hsla(${g.hue},${34 * sat}%,17%,0.72)`;
+    ctx.fillStyle = `hsla(${g.hue},${lerp(34, 22, dim) * sat}%,${lerp(17, 13, dim)}%,${lerp(0.72, 0.5, dim)})`;
     ctx.fill();
     ctx.lineWidth = (isHover ? 2 : 1) / cam.scale;
     ctx.strokeStyle = isHover
       ? "#5aa0ff"
       : isMatch
         ? "#e0a83d"
-        : dim
-          ? "rgba(70,80,92,0.5)"
-          : `hsla(${g.hue},${45 * sat}%,45%,0.75)`;
+        : `hsla(${g.hue},${lerp(45, 8, dim) * sat}%,${lerp(45, 32, dim)}%,${lerp(0.75, 0.5, dim)})`;
     ctx.stroke();
 
     if (state.selection.has(g)) {
@@ -167,7 +206,7 @@ export function render() {
     if (cam.scale > 0.1 && !g.editing) {
       // divider under the header (the editor overlay owns the header when open)
       ctx.lineWidth = 1 / cam.scale;
-      ctx.strokeStyle = dim ? "rgba(70,80,92,0.35)" : `hsla(${g.hue},${40 * sat}%,40%,0.4)`;
+      ctx.strokeStyle = `hsla(${g.hue},${lerp(40, 8, dim) * sat}%,${lerp(40, 32, dim)}%,${lerp(0.4, 0.35, dim)})`;
       ctx.beginPath();
       ctx.moveTo(g.x + 8, g.y + HEADER_H);
       ctx.lineTo(g.x + g.w - 8, g.y + HEADER_H);
@@ -175,7 +214,7 @@ export function render() {
 
       // header: extension on the left
       if (g.ext) {
-        ctx.fillStyle = dim ? "#454e58" : "#8b97a4";
+        ctx.fillStyle = mixHex("#8b97a4", "#454e58", dim);
         ctx.font = "11px ui-monospace, monospace";
         ctx.fillText(g.ext, g.x + 10, g.y + HEADER_H / 2 + 4);
       }
@@ -194,20 +233,19 @@ export function render() {
             ctx.fillStyle = "rgba(90,160,255,0.18)";
             ctx.fill();
           }
-          const color = dim
-            ? "#556070"
-            : activeState
+          const color =
+            dim < 0.45 && activeState
               ? "#5aa0ff"
-              : isBtnHover
+              : dim < 0.45 && isBtnHover
                 ? "#e6edf3"
-                : `hsl(${g.hue},${40 * sat}%,70%)`;
-          drawIcon(iconFor(g, r.action), r.x, r.y, color, activeState || isBtnHover);
+                : `hsl(${g.hue},${lerp(40, 8, dim) * sat}%,${lerp(70, 38, dim)}%)`;
+          drawIcon(iconFor(g, r.action), r.x, r.y, color, (activeState || isBtnHover) && dim < 0.45);
         }
       }
 
       // body: file name without extension
       {
-        ctx.fillStyle = dim ? "#5b6672" : `hsl(${g.hue},${52 * sat}%,78%)`;
+        ctx.fillStyle = `hsl(${g.hue},${lerp(52, 8, dim) * sat}%,${lerp(78, 42, dim)}%)`;
         ctx.font = "13px ui-monospace, monospace";
         ctx.save();
         ctx.beginPath();
@@ -226,7 +264,7 @@ export function render() {
         }
 
         if (!g.expanded) {
-          ctx.fillStyle = dim ? "#454e58" : "#8b97a4";
+          ctx.fillStyle = mixHex("#8b97a4", "#454e58", dim);
           ctx.font = "11px ui-monospace, monospace";
           ctx.fillText(`${g.ids.length} fn`, g.x + 10, g.y + HEADER_H + TITLE_H + 12);
           ctx.font = "13px ui-monospace, monospace";
@@ -237,7 +275,7 @@ export function render() {
 
   // edges (aggregated) — normal ones as a single path
   ctx.lineWidth = 1 / cam.scale;
-  ctx.strokeStyle = active ? "rgba(120,135,150,0.10)" : "rgba(120,135,150,0.26)";
+  ctx.strokeStyle = `rgba(120,135,150,${lerp(0.26, 0.1, dimAmt)})`;
   const normal = new Path2D();
   const hot = [];
   for (const e of state.renderEdges) {
@@ -277,25 +315,24 @@ export function render() {
     const isHover = n === state.hoverEntity;
     const isNeighbor = state.hoverNeighbors.has(n);
     const isMatch = state.highlight.has(n.id);
-    const dim = (dimHover && !isHover && !isNeighbor) || (state.highlight.size && !isMatch);
+    const rest = (dimHover && !isHover && !isNeighbor) || (state.highlight.size && !isMatch);
+    const dim = rest ? dimAmt : 0;
     roundRect(n.x, n.y, n.w, n.h, 6);
     const hue = n.group.hue;
     const nsat = state.zenMode && !isEdited(n.group.path) ? 0 : 1;
     if (isHover) ctx.fillStyle = "#2a3546";
     else if (isMatch) ctx.fillStyle = "#3a2f12";
-    else ctx.fillStyle = dim ? "#171b21" : "#1c232c";
+    else ctx.fillStyle = mixHex("#1c232c", "#171b21", dim);
     ctx.fill();
     ctx.lineWidth = (isHover ? 2 : 1) / cam.scale;
     ctx.strokeStyle = isHover
       ? "#5aa0ff"
       : isMatch
         ? "#e0a83d"
-        : dim
-          ? "rgba(70,80,92,0.5)"
-          : `hsla(${hue},${45 * nsat}%,55%,0.8)`;
+        : `hsla(${hue},${lerp(45, 8, dim) * nsat}%,${lerp(55, 32, dim)}%,${lerp(0.8, 0.5, dim)})`;
     ctx.stroke();
     if (showText) {
-      ctx.fillStyle = dim ? "#5b6672" : "#e6edf3";
+      ctx.fillStyle = mixHex("#e6edf3", "#5b6672", dim);
       ctx.save();
       ctx.beginPath();
       ctx.rect(n.x + 6, n.y, n.w - 12, n.h);

@@ -170,7 +170,7 @@ window.addEventListener("mousemove", (e) => {
       state.hoverButton = ctrl;
       markDirty();
     }
-    if (ctrl.g !== state.hoverEntity) setHover(ctrl.g);
+    if (ctrl.g !== state.hoverEntity || hoverClearTimer) setHover(ctrl.g);
     showButtonTooltip(e, ctrl);
     return;
   }
@@ -179,12 +179,22 @@ window.addEventListener("mousemove", (e) => {
     markDirty();
   }
   const ent = entityAt(w.x, w.y);
-  if (ent !== state.hoverEntity) setHover(ent);
+  if (ent) setHover(ent);
+  else if (state.hoverEntity) setHover(null);
   if (ent) showTooltip(e, ent);
   else hideTooltip();
 });
 
 window.addEventListener("mouseup", (e) => endDrag(e));
+
+canvas.addEventListener("mouseleave", () => {
+  hideTooltip();
+  if (state.hoverButton) {
+    state.hoverButton = null;
+    markDirty();
+  }
+  setHover(null, true);
+});
 
 canvas.addEventListener("dblclick", (e) => {
   const local = localPos(e);
@@ -316,7 +326,8 @@ function endDrag(e) {
 }
 
 /** Update hover entity and its neighbor set for edge/card highlighting. */
-export function setHover(entity) {
+let hoverClearTimer = 0;
+function applyHover(entity) {
   state.hoverEntity = entity;
   state.hoverNeighbors = new Set();
   if (entity) {
@@ -326,6 +337,32 @@ export function setHover(entity) {
     }
   }
   markDirty();
+}
+
+export function setHover(entity, immediate) {
+  if (entity) {
+    if (hoverClearTimer) {
+      clearTimeout(hoverClearTimer);
+      hoverClearTimer = 0;
+    }
+    if (entity === state.hoverEntity) return;
+    applyHover(entity);
+    return;
+  }
+  if (hoverClearTimer) {
+    clearTimeout(hoverClearTimer);
+    hoverClearTimer = 0;
+  }
+  if (!immediate) {
+    if (!hoverClearTimer) {
+      hoverClearTimer = setTimeout(() => {
+        hoverClearTimer = 0;
+        applyHover(null);
+      }, 100);
+    }
+    return;
+  }
+  applyHover(null);
 }
 
 /** Show the HTML tooltip for a hovered folder, file, or function. */

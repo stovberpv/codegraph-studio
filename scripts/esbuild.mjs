@@ -58,25 +58,8 @@ function compileTemplate() {
     compileDebug: false,
   });
   fs.writeFileSync(generatedTpl, `${fn}\nmodule.exports = renderWebview;\n`);
-  // types for extension.ts (the .cjs file exists → needs a co-located .d.cts)
-  fs.writeFileSync(
-    path.join(generatedDir, "webview-template.d.cts"),
-    [
-      "interface WebviewLocals {",
-      "  standalone: boolean;",
-      "  csp: string | null;",
-      "  nonce?: string;",
-      "  cssHref: string;",
-      "  viewerSrc: string;",
-      "  editorSrc: string | null;",
-      "  t: Record<string, string>;",
-      "  lang: string;",
-      "}",
-      "declare const renderWebview: (locals: WebviewLocals) => string;",
-      "export = renderWebview;",
-      "",
-    ].join("\n"),
-  );
+  // Types live in the committed webview-template.d.cts (tsc must resolve the
+  // import before this .cjs exists). Keep that file in sync with WebviewLocals.
 }
 
 // standalone index.html from the same template.

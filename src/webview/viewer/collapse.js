@@ -43,7 +43,7 @@ export function runControl(g, action) {
   } else if (action === "hideFile") {
     g.hidden = true;
     if (g.editing && window.__cgEditor) window.__cgEditor.close(g.path);
-    if (state.hoverEntity === g) setHover(null);
+    if (state.hoverEntity === g) setHover(null, true);
   } else if (action === "hideIncoming") {
     g.hideIncoming = !g.hideIncoming;
   } else if (action === "hideOutgoing") {
@@ -62,7 +62,7 @@ export function runFolderControl(f, action) {
     if (f.collapsed) f.cardPlaced = false; // re-center the card on the current files
   } else if (action === "hideFolder") {
     f.hidden = true;
-    if (state.hoverEntity === f) setHover(null);
+    if (state.hoverEntity === f) setHover(null, true);
   } else if (action === "hideIncoming") {
     f.hideIncoming = !f.hideIncoming;
   } else if (action === "hideOutgoing") {

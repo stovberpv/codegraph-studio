@@ -22,6 +22,7 @@ export const state = {
 
   hoverEntity: null, // node or group under the cursor
   hoverNeighbors: new Set(), // neighboring entities for highlight
+  hoverDim: 0, // 0–1 eased rest-of-graph dim (hover or search)
   highlight: new Set(), // node ids from search
   highlightGroups: new Set(), // groups from search
 

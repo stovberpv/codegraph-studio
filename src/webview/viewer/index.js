@@ -11,7 +11,7 @@
  */
 import { canvas } from "./dom.js";
 import { state, cam, markDirty } from "./state.js";
-import { render } from "./render.js";
+import { hoverNeedsTick, render } from "./render.js";
 import { load } from "./io.js";
 import { applySize, onEditingChange, openEditor, setEditorSize } from "./sizing.js";
 import { runControl, runFolderControl } from "./collapse.js";
@@ -35,9 +35,9 @@ function resize() {
 }
 window.addEventListener("resize", resize);
 
-/** Animation-frame loop: render when dirty, then schedule the next frame. */
-function frame() {
-  if (state.dirty) render();
+/** Animation-frame loop: render when dirty or the hover dim is still easing. */
+function frame(now) {
+  if (state.dirty || hoverNeedsTick()) render(now);
   requestAnimationFrame(frame);
 }
 

@@ -148,7 +148,9 @@ instead. The toast is `pointer-events: none` and never persisted.
   exit kink, facing gap tighter than `COLLIDE_GAP`, and a detour tax of one
   card width. The last pair sticks while dragging so the curve does not flicker.
 - Card fill uses a per-file hue: `hsla(hue, 34%, 17%, 0.72)` (dimmed
-  `22%/13%/0.5`); border `hsla(hue, 45%, 45%, 0.75)`.
+  `22%/13%/0.5`); border `hsla(hue, 45%, 45%, 0.75)`. Hover (and search) dim
+  eases over ~70–120ms; leaving a card keeps the dim for 100ms so gaps do not
+  flash.
 - Zen mode multiplies each card's (and its functions') saturation by 0 for
   non-edited files, so only edited files keep their hue. Edited files also draw a
   `edited-dot` in the title row regardless of Zen.
