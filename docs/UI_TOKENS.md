@@ -139,11 +139,14 @@ instead. The toast is `pointer-events: none` and never persisted.
 
 - Idle edge stroke: `rgba(120,135,150,0.26)` (dimmed to `0.10` when something is
   focused). Highlighted edge/arrow: `rgba(90,160,255,0.9–0.95)`.
-- Ports are chosen from the four side midpoints of each endpoint box so the cubic
-  leaves and enters on **outward** sides and does not clip either box; control
-  stubs pull along the side normals by `max(24, dist/2)` so long links keep a
-  visible bow. Falls back to dominant-axis attachment only when every side pair
-  is discarded (degenerate overlap).
+- Ports are the four side midpoints of each endpoint box (buried ports skipped).
+  Each pair gets one cubic with stubs along the outward normals: facing ports
+  use `min(dist/2, along)`; a detour uses `0.25 × dist`. If the chord is
+  nearly collinear with the stubs (long T–B / L–R), both handles shift
+  perpendicularly by `0.12 × dist` so the cubic bows instead of reading as a
+  line. The picker minimizes one cost: clips through a card, then path length,
+  exit kink, facing gap tighter than `COLLIDE_GAP`, and a detour tax of one
+  card width. The last pair sticks while dragging so the curve does not flicker.
 - Card fill uses a per-file hue: `hsla(hue, 34%, 17%, 0.72)` (dimmed
   `22%/13%/0.5`); border `hsla(hue, 45%, 45%, 0.75)`.
 - Zen mode multiplies each card's (and its functions') saturation by 0 for

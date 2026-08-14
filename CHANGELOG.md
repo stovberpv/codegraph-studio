@@ -6,6 +6,8 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.1.2] - 2026-08-14
+
 ### Fixed
 
 - On-canvas editors now follow the same Focus/Visibility rules as their cards
@@ -18,10 +20,12 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Dragging an open editor by its header actually moves and releases: pointer
   capture on the chrome/title bar, so the overlay no longer swallows `mouseup`
   and the card does not stick to the cursor.
-- Call-graph curves no longer cut through their endpoint cards: ports are picked
-  from outward side midpoints so the cubic leaves and enters without clipping.
-  Stub pull scales with port distance (`max(24, dist/2)`) so long links keep a
-  visible bow instead of collapsing to a straight chord.
+- Call-graph curves no longer cut through their endpoint cards. Side midpoints
+  are scored with one cost (clip, length, exit kink, alley tighter than
+  `COLLIDE_GAP`, same-side detour tax). The last pair sticks while dragging.
+  Long links keep a visible bow: detour stubs scale with span, and collinear
+  T–B / L–R handles offset perpendicular to the chord so the cubic is not a
+  straight line.
 - Opening or resizing an on-canvas editor pushes neighboring cards apart
   (`COLLIDE_GAP`) so the grown card does not sit on top of another file.
   Relayout and restoring a saved layout run the same AABB pass, so stacked
@@ -60,6 +64,7 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Live rebuild and a cancellable background-worker parser with progress
   reporting.
 
-[Unreleased]: https://github.com/stovberpv/codegraph-studio/compare/v0.1.1...HEAD
+[Unreleased]: https://github.com/stovberpv/codegraph-studio/compare/v0.1.2...HEAD
+[0.1.2]: https://github.com/stovberpv/codegraph-studio/compare/v0.1.1...v0.1.2
 [0.1.1]: https://github.com/stovberpv/codegraph-studio/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/stovberpv/codegraph-studio/releases/tag/v0.1.0
