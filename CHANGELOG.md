@@ -6,6 +6,18 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.1.3] - 2026-08-14
+
+### Changed
+
+- Hover dim of the rest of the graph eases in and out instead of snapping, and
+  survives the gap between cards so sweeping the cursor does not flicker.
+
+### Fixed
+
+- `tsc` and the IDE resolve the webview Pug import without a prior build: types
+  for `webview-template.cjs` are committed as `webview-template.d.cts`.
+
 ## [0.1.2] - 2026-08-14
 
 ### Fixed
@@ -64,7 +76,8 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Live rebuild and a cancellable background-worker parser with progress
   reporting.
 
-[Unreleased]: https://github.com/stovberpv/codegraph-studio/compare/v0.1.2...HEAD
+[Unreleased]: https://github.com/stovberpv/codegraph-studio/compare/v0.1.3...HEAD
+[0.1.3]: https://github.com/stovberpv/codegraph-studio/compare/v0.1.2...v0.1.3
 [0.1.2]: https://github.com/stovberpv/codegraph-studio/compare/v0.1.1...v0.1.2
 [0.1.1]: https://github.com/stovberpv/codegraph-studio/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/stovberpv/codegraph-studio/releases/tag/v0.1.0

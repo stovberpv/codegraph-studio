@@ -10,8 +10,9 @@ changes.
   `src/extension/templates/webview.pug`. The build precompiles it to
   `src/extension/generated/webview-template.cjs`; the extension renders it at
   runtime (with `nonce`/`csp`/webview URIs), and the build renders it with
-  `standalone: true` into `dist/webview/index.html`. Change the UI in the Pug
-  template, never in a hand-written HTML copy.
+  `standalone: true` into `dist/webview/index.html`. Types for that import live
+  in the committed `webview-template.d.cts` so `tsc` works before a build.
+  Change the UI in the Pug template, never in a hand-written HTML copy.
 - **Data parity.** The webview (`src/webview/viewer/`) receives its graph two ways:
   `fetch('graph.json')` in standalone, and a `graph` message via `postMessage`
   inside the extension. Every data change must work through both paths.
