@@ -85,6 +85,7 @@ export function layout() {
       vx: 0,
       vy: 0,
       linked: false,
+      island: dirname(file),
     };
     applySize(g);
     for (const n of list) n.group = g;
@@ -162,6 +163,7 @@ export function layout() {
           y += rowH + gap;
           rowH = 0;
         }
+        g.island = "iso:" + g.path;
         g.cx = x + g.w / 2;
         g.cy = y + g.h / 2;
         x += g.w + gap;
@@ -202,6 +204,7 @@ function clusterIslands(gs, links, keyOf) {
   const byKey = new Map();
   for (const g of gs) {
     const key = keyOf(g);
+    g.island = key;
     if (!byKey.has(key)) byKey.set(key, []);
     byKey.get(key).push(g);
   }

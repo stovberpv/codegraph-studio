@@ -1,10 +1,12 @@
 # UI tokens
 
 The dark, monospace design language for Codegraph Studio. Reuse these values in
-`src/webview/styles.css`, the `src/extension/templates/webview.pug` markup, and
-the canvas painter in `src/webview/viewer/` (metrics live in `viewer/constants.js`,
-drawing in `viewer/render.js`). When you need a new value, extend
-this file rather than inventing a one-off.
+`src/webview/styles.css` (`:root --cg-*`), `src/webview/viewer/palette.js`, the
+`src/extension/templates/webview.pug` markup, and the canvas painter. When you
+need a new value, extend this file rather than inventing a one-off.
+
+Chrome uses `--cg-*` on `:root` in `src/webview/styles.css`. The canvas painter
+and editor overlay import the same values from `src/webview/viewer/palette.js`.
 
 ## Color — surfaces
 
@@ -14,10 +16,15 @@ this file rather than inventing a one-off.
 | surface-2 | `rgba(17,21,28,0.72)` | control menu icon-buttons |
 | surface-pop | `rgba(17,21,28,0.94)` | control menu dropdown popups |
 | surface-3 | `rgba(17,21,28,0.66)` | info-bar, legend |
+| surface-toast | `rgba(17,21,28,0.92)` | processing toast |
 | surface-solid | `#1b222b` | buttons, editor bar |
+| surface-hover | `#232c37` | button / menu-btn hover fill |
 | surface-group | `#12171e` | segmented button group |
+| surface-accent | `#243552` | active toggle fill |
 | editor-bg | `#161b22` | on-canvas editor body |
 | tooltip-bg | `rgba(20,24,31,0.97)` | tooltip |
+| overlay | `rgba(14,17,22,0.35)` | loading overlay |
+| overlay-strong | `rgba(14,17,22,0.55)` | start overlay |
 
 ## Color — borders
 
@@ -40,6 +47,7 @@ this file rather than inventing a one-off.
 | text-faint | `#6b7684` | legend |
 | placeholder | `#4d5763` | input placeholder |
 | icon | `#5b6672` | field icons |
+| text-dim-deep | `#454e58` | dimmed mix partner for `text-dim` |
 
 ## Color — accent & status
 
@@ -48,12 +56,21 @@ this file rather than inventing a one-off.
 | accent | `#3d7de6` | focus ring, active toggle border |
 | accent-strong | `#2f6fe0` | primary button |
 | accent-hover | `#5aa0ff` | hovered card/edge highlight |
-| accent-soft | `#9ec0ff` | active toggle text |
+| accent-soft | `#9ec0ff` | active toggle text, selection ring |
+| accent-glow | `rgba(61,125,230,0.6)` | logo bloom |
+| accent-ring | `rgba(61,125,230,0.18)` | input focus ring |
+| accent-wash | `rgba(90,160,255,0.18)` | control hover fill |
 | brand-purple | `#8b5cf6` | logo gradient end |
-| status-dirty | `#e0a83d` | unsaved edits |
+| on-accent | `#ffffff` | primary button label |
+| status-dirty | `#e0a83d` | unsaved edits, search-match card |
 | status-ok | `#3fb950` | saved |
 | status-error | `#f85149` | error / external change |
 | edited-dot | `#5ac47d` | edited-file marker dot in a card's title row |
+| fn-hover | `#2a3546` | hovered function row |
+| fn-match | `#3a2f12` | search-match function row |
+| fn-bg / fn-bg-dim | `#1c232c` / `#171b21` | idle function row (mix by hover-dim) |
+| edge-import | `#4094a8` | idle import stroke |
+| edge-import-hot | `#46bec8` | highlighted import stroke |
 
 ## Radius
 
@@ -137,8 +154,11 @@ instead. The toast is `pointer-events: none` and never persisted.
 
 ## Canvas edges
 
-- Idle edge stroke: `rgba(120,135,150,0.26)` (dimmed to `0.10` when something is
-  focused). Highlighted edge/arrow: `rgba(90,160,255,0.9–0.95)`.
+- Idle call stroke: `text-dim` at alpha `0.32` (dimmed to `0.12` when something
+  is focused). Idle import stroke: `edge-import` at `0.26` (`0.10` dimmed).
+  Highlighted call/arrow: `accent-hover` at `0.9–0.95`. Highlighted import:
+  `edge-import-hot` at `0.85`. Island bundles use the same hues at slightly
+  lower alpha.
 - Ports are the four side midpoints of each endpoint box (buried ports skipped).
   Each pair gets one cubic with stubs along the outward normals: facing ports
   use `min(dist/2, along)`; a detour uses `0.25 × dist`. If the chord is

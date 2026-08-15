@@ -7,14 +7,18 @@ comments, UI, and docs.
 
 - **Graph** — the parsed result: files, nodes, edges (`graph.json`).
 - **Node** — a function, method, or class member. The smallest callable unit.
-- **Edge** — a resolved call `from → to` between two nodes.
+- **Edge** — a link `from → to` between two nodes, with `kind`:
+  - **call** — a resolved function/method call;
+  - **import** — a value-import dependency between file `«module»` nodes
+    (follows barrels to the defining file; `import type` is omitted).
 - **`«module»` pseudo-node** — a per-file node collecting top-level (non-function)
-  calls, so module-level work is visible.
+  calls and anchoring import-dependency edges, so module-level work and
+  file dependencies are visible.
 - **File facts** — per-file parse results (declarations, imports, methods,
-  re-exports, class fields) used to resolve calls. Imports are bindings that
-  carry the original exported name and kind (named/default/namespace), used for
-  alias, namespace, dynamic, Node `#` (`package.json` `"imports"`), and
-  path/package-alias resolution.
+  re-exports, class fields) used to resolve calls and import edges. Imports are
+  bindings that carry the original exported name and kind
+  (named/default/namespace), used for alias, namespace, dynamic, Node `#`
+  (`package.json` `"imports"`), and path/package-alias resolution.
 
 ## Canvas entities
 
@@ -27,14 +31,18 @@ comments, UI, and docs.
   cluster with a tight local layout, freeze it into a rigid box, then lay out the
   sparse box-to-box graph with strong repulsion / long springs / weak gravity).
   **Folder mode** clusters by directory (and draws the island backdrops);
-  **files mode** clusters by **call-graph community** (Louvain, `community.js`),
-  so files that call each other land on the same island regardless of directory,
-  and a repo-wide util no longer anchors the center of one globe. A final AABB
+  **files mode** clusters by **graph community** (Louvain over call + import
+  edges, `community.js`), so files that call or import each other land on the
+  same island regardless of directory, and a repo-wide util no longer anchors
+  the center of one globe. A final AABB
   pass (`COLLIDE_GAP`) unsticks any cards that still overlap after packing.
 - **Unit** — a focusable entity for follow/lazy modes: a file group, a collapsed
   folder card, or an expanded folder island (which focuses the whole folder).
   Adjacency between file/collapsed-folder units is `unitAdj`.
 - **renderEdges** — edges aggregated for drawing; endpoints are nodes or cards.
+  Cold cross-island speck pairs may further collapse to one centroid-to-centroid
+  curve per island pair. Hover/highlight draws incident file-file strokes on top
+  and does not restyle bundles.
 
 ## Controls & state
 
@@ -44,6 +52,9 @@ comments, UI, and docs.
   entity (the entity stays visible).
 - **toggle** — collapse / expand a card or folder.
 - **edit** — open the on-canvas CodeMirror editor for a file (extension only).
+- **Edge LOD** — View → Performance. When on (default), cross-island speck
+  pairs bundle to one centroid curve. File-file strokes are not capped and keep
+  full curve geometry at every zoom.
 
 ## Modes
 

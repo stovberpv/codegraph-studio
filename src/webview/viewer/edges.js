@@ -48,9 +48,10 @@ export function rebuildRenderEdges() {
       if (adj) for (const n of adj) state.followSet.add(n);
     }
   }
-  // 3) edges for drawing (aggregated onto a collapsed folder card)
+  // 3) edges for drawing (aggregated onto a collapsed folder card).
+  // One drawable line per unit pair; if any underlying edge is a call, kind is call.
   state.renderEdges = [];
-  const seen = new Set();
+  const seen = new Map(); // key -> render edge
   const manual = !state.followMode && !state.lazyMode; // manual toggles only in normal mode
   for (const e of state.edges) {
     const from = e.from;
@@ -82,9 +83,15 @@ export function rebuildRenderEdges() {
     const b = isFolder(ub) ? ub : endpoint(to);
     if (!a || !b || a === b) continue;
     const k = entKey(a) + ">" + entKey(b);
-    if (seen.has(k)) continue;
-    seen.add(k);
-    state.renderEdges.push({ a, b });
+    const kind = e.kind === "import" ? "import" : "call";
+    const prev = seen.get(k);
+    if (!prev) {
+      const re = { a, b, kind };
+      seen.set(k, re);
+      state.renderEdges.push(re);
+    } else if (kind === "call" && prev.kind === "import") {
+      prev.kind = "call";
+    }
   }
   markDirty();
 }

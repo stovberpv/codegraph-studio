@@ -27,3 +27,12 @@ export const FOLDER_PAD = 28; // breathing room around files inside an island
 export const FOLDER_HEAD = 24; // folder header height (same as HEADER_H)
 export const FOLDER_CARD_W = 260; // collapsed folder card
 export const FOLDER_CARD_H = 60;
+
+/**
+ * If both endpoints are smaller than this on screen (px), a cross-island edge
+ * may collapse to a centroid-to-centroid bundle. Readable cards always keep
+ * real file-file strokes (including intra-island).
+ */
+export const MIN_EDGE_CARD_PX = 24;
+/** Half-size of the fake box used as an island-centroid bundle port. */
+export const ISLAND_ANCHOR_R = 14;
