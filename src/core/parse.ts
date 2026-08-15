@@ -10,7 +10,8 @@
  *     - function calls inside function bodies.
  *  3. Resolves calls into "function -> function" edges by name:
  *     local file function -> method of the same class (this.x) -> imported name.
- *  4. Writes graph.json (nodes = functions grouped by file; edges = calls).
+ *  4. Emits value-import edges between `«module»` nodes (file dependencies).
+ *  5. Writes graph.json (nodes = functions grouped by file; edges = calls + imports).
  *
  * Non-relative imports resolve via nearest package.json `"imports"` (`#…`),
  * tsconfig `paths`, and workspace package names (emit dirs in `"imports"`
@@ -156,6 +157,7 @@ interface FileEntry {
 interface Edge {
   from: string;
   to: string;
+  kind: "call" | "import";
 }
 
 interface Graph {
@@ -192,9 +194,12 @@ interface FileFacts {
   // "Class.method" -> nodeId, and bare "method" -> nodeId (for this.x)
   methods: Map<string, string>;
   // re-exports: exportedName -> { spec, orig } for `export { a as b } from './x'`
+  // and local `export { a }` of an imported binding
   reexports: Map<string, { spec: string; orig: string }>;
   // `export * from './x'` — list of specifiers
   wildcards: string[];
+  // top-level class names declared in this file (for import-target resolution)
+  declaredNames: Set<string>;
   // local symbol name that this module exports as `default`, if statically known
   defaultExportName?: string;
   // variable name -> class name from `const x = new Foo(...)` (instance heuristic)
@@ -314,6 +319,7 @@ function collectFacts(relPath: string, sf: ts.SourceFile): FileFacts {
     methods: new Map(),
     reexports: new Map(),
     wildcards: [],
+    declaredNames: new Set(),
     instanceVars: new Map(),
     classFields: new Map(),
     fnBodies: [],
@@ -326,6 +332,9 @@ function collectFacts(relPath: string, sf: ts.SourceFile): FileFacts {
     if (ts.isImportDeclaration(stmt) && stmt.importClause) {
       const spec = (stmt.moduleSpecifier as ts.StringLiteral).text;
       const clause = stmt.importClause;
+      // Value-import edges skip `import type`; call resolution also ignores them
+      // (type-only bindings are not runtime callees).
+      if (clause.isTypeOnly) continue;
       if (clause.name) {
         // import Foo from '...'  (default import)
         facts.imports.set(clause.name.text, { kind: "default", spec });
@@ -335,6 +344,7 @@ function collectFacts(relPath: string, sf: ts.SourceFile): FileFacts {
         if (ts.isNamedImports(named)) {
           // import { a, b as c } from '...'  — record the original export name
           for (const el of named.elements) {
+            if (el.isTypeOnly) continue;
             const imported = el.propertyName ? el.propertyName.text : el.name.text;
             facts.imports.set(el.name.text, { kind: "named", spec, imported });
           }
@@ -354,16 +364,39 @@ function collectFacts(relPath: string, sf: ts.SourceFile): FileFacts {
 
     // -- re-exports: export { a as b } from './x'  /  export * from './x' ----
     if (ts.isExportDeclaration(stmt) && stmt.moduleSpecifier && ts.isStringLiteral(stmt.moduleSpecifier)) {
+      if (stmt.isTypeOnly) continue;
       const spec = stmt.moduleSpecifier.text;
       const clause = stmt.exportClause;
       if (clause && ts.isNamedExports(clause)) {
         for (const el of clause.elements) {
+          if (el.isTypeOnly) continue;
           const exported = el.name.text;
           const orig = el.propertyName ? el.propertyName.text : el.name.text;
           facts.reexports.set(exported, { spec, orig });
         }
       } else if (!clause) {
         facts.wildcards.push(spec); // export * from './x'
+      }
+      continue;
+    }
+
+    // -- local re-exports: import X from './a'; export { X } --------------
+    // Why: models barrels often import-then-re-export instead of `export … from`.
+    if (ts.isExportDeclaration(stmt) && !stmt.moduleSpecifier) {
+      if (stmt.isTypeOnly) continue;
+      const clause = stmt.exportClause;
+      if (clause && ts.isNamedExports(clause)) {
+        for (const el of clause.elements) {
+          if (el.isTypeOnly) continue;
+          const exported = el.name.text;
+          const orig = el.propertyName ? el.propertyName.text : el.name.text;
+          const binding = facts.imports.get(orig);
+          if (!binding || binding.kind === "namespace") continue;
+          facts.reexports.set(exported, {
+            spec: binding.spec,
+            orig: binding.kind === "default" ? "default" : binding.imported,
+          });
+        }
       }
       continue;
     }
@@ -399,6 +432,7 @@ function collectFacts(relPath: string, sf: ts.SourceFile): FileFacts {
     // -- class C { method() {} } ---------------------------------------
     if (ts.isClassDeclaration(stmt) && stmt.name) {
       const className = stmt.name.text;
+      facts.declaredNames.add(className);
       if (hasDefaultModifier(stmt)) facts.defaultExportName = className;
       const fields = ensureClassFields(facts, className);
       for (const member of stmt.members) {
@@ -1094,11 +1128,179 @@ function extractCalls(
     }
 
     for (const to of targets) {
-      const key = fn.id + "\u0000" + to;
+      const key = "call\u0000" + fn.id + "\u0000" + to;
       if (edgeSet.has(key)) continue;
       edgeSet.add(key);
-      edges.push({ from: fn.id, to });
+      edges.push({ from: fn.id, to, kind: "call" });
     }
+  }
+}
+
+/**
+ * Ensures a `«module»` pseudo-node exists on `facts` and is registered in the
+ * graph node/file lists. Why: import edges attach to module nodes so files
+ * without callable exports (e.g. Sequelize models) still show dependencies.
+ */
+function ensureModuleNode(
+  facts: FileFacts,
+  nodes: FnNode[],
+  nodeIds: Set<string>,
+  fileEntryByPath: Map<string, FileEntry>,
+  files: FileEntry[],
+): string {
+  const id = `${facts.relPath}#${MODULE_NAME}`;
+  const existing = facts.fnBodies.find((e) => e.node.kind === "module");
+  if (existing) {
+    if (!nodeIds.has(existing.node.id)) {
+      nodes.push(existing.node);
+      nodeIds.add(existing.node.id);
+      let fe = fileEntryByPath.get(facts.relPath);
+      if (!fe) {
+        fe = { path: facts.relPath, functions: [] };
+        files.push(fe);
+        fileEntryByPath.set(facts.relPath, fe);
+      }
+      if (!fe.functions.includes(existing.node.id)) fe.functions.push(existing.node.id);
+    }
+    return existing.node.id;
+  }
+  const modNode: FnNode = {
+    id,
+    name: MODULE_NAME,
+    file: facts.relPath,
+    kind: "module",
+    line: 1,
+  };
+  facts.fnBodies.push({ node: modNode, body: facts.sf, isModule: true, scan: [] });
+  nodes.push(modNode);
+  nodeIds.add(id);
+  let fe = fileEntryByPath.get(facts.relPath);
+  if (!fe) {
+    fe = { path: facts.relPath, functions: [] };
+    files.push(fe);
+    fileEntryByPath.set(facts.relPath, fe);
+  }
+  fe.functions.push(id);
+  return id;
+}
+
+/**
+ * Finds the defining file for an exported symbol, following re-exports
+ * (`export { a } from './x'`, local `export { imported }`, and `export *`).
+ * Why: import edges should land on the file that declares the symbol, not a
+ * barrel that only re-exports it.
+ */
+function resolveExportFile(
+  rel: string,
+  name: string,
+  root: string,
+  fileSet: Set<string>,
+  factsByRel: Map<string, FileFacts>,
+  ctx: ResolverContext,
+  seen: Set<string>,
+): string | undefined {
+  const key = rel + "|" + name;
+  if (seen.has(key)) return undefined;
+  seen.add(key);
+
+  const tf = factsByRel.get(rel);
+  if (!tf) return undefined;
+
+  if (name === DEFAULT_IMPORT) {
+    if (tf.defaultExportName) return rel;
+    const red = tf.reexports.get("default");
+    if (red) {
+      const nr = resolveModule(rel, red.spec, root, fileSet, ctx);
+      if (nr) {
+        const orig = red.orig === "default" ? DEFAULT_IMPORT : red.orig;
+        return resolveExportFile(nr, orig, root, fileSet, factsByRel, ctx, seen);
+      }
+    }
+    return undefined;
+  }
+
+  if (tf.localFns.has(name) || tf.declaredNames.has(name)) return rel;
+  for (const m of tf.methods.keys()) {
+    if (m.startsWith(name + ".")) return rel;
+  }
+
+  const re = tf.reexports.get(name);
+  if (re) {
+    const nr = resolveModule(rel, re.spec, root, fileSet, ctx);
+    if (nr) {
+      const orig = re.orig === "default" ? DEFAULT_IMPORT : re.orig;
+      return resolveExportFile(nr, orig, root, fileSet, factsByRel, ctx, seen);
+    }
+  }
+
+  for (const spec of tf.wildcards) {
+    const nr = resolveModule(rel, spec, root, fileSet, ctx);
+    if (nr) {
+      const r = resolveExportFile(nr, name, root, fileSet, factsByRel, ctx, seen);
+      if (r) return r;
+    }
+  }
+
+  return undefined;
+}
+
+/**
+ * Emits file-level import edges (`kind: "import"`) between `«module»` nodes for
+ * each resolved value import. Named/default imports follow barrels to the
+ * defining file; namespace imports target the resolved module itself.
+ * Deduped per importer→importee file pair. Unresolved / external specs are dropped.
+ */
+function extractImportEdges(
+  facts: FileFacts,
+  root: string,
+  fileSet: Set<string>,
+  factsByRel: Map<string, FileFacts>,
+  ctx: ResolverContext,
+  edgeSet: Set<string>,
+  edges: Edge[],
+  nodes: FnNode[],
+  nodeIds: Set<string>,
+  fileEntryByPath: Map<string, FileEntry>,
+  files: FileEntry[],
+): void {
+  if (facts.imports.size === 0) return;
+
+  const seenPairs = new Set<string>();
+  const seenBindings = new Set<string>();
+
+  for (const binding of facts.imports.values()) {
+    const bkey =
+      binding.kind === "named"
+        ? `n:${binding.spec}:${binding.imported}`
+        : `${binding.kind}:${binding.spec}`;
+    if (seenBindings.has(bkey)) continue;
+    seenBindings.add(bkey);
+
+    const mod = resolveModule(facts.relPath, binding.spec, root, fileSet, ctx);
+    if (!mod) continue;
+
+    let targetRel: string | undefined;
+    if (binding.kind === "namespace") {
+      targetRel = mod;
+    } else {
+      const exportName = binding.kind === "default" ? DEFAULT_IMPORT : binding.imported;
+      targetRel = resolveExportFile(mod, exportName, root, fileSet, factsByRel, ctx, new Set());
+    }
+    if (!targetRel || targetRel === facts.relPath) continue;
+
+    const pairKey = facts.relPath + "\u0000" + targetRel;
+    if (seenPairs.has(pairKey)) continue;
+    seenPairs.add(pairKey);
+
+    const targetFacts = factsByRel.get(targetRel);
+    if (!targetFacts) continue;
+
+    const fromId = ensureModuleNode(facts, nodes, nodeIds, fileEntryByPath, files);
+    const toId = ensureModuleNode(targetFacts, nodes, nodeIds, fileEntryByPath, files);
+    const key = "import\u0000" + fromId + "\u0000" + toId;
+    if (edgeSet.has(key)) continue;
+    edgeSet.add(key);
+    edges.push({ from: fromId, to: toId, kind: "import" });
   }
 }
 
@@ -1411,8 +1613,24 @@ export function buildGraph(root: string, opts: BuildOptions = {}): Graph {
   const edges: Edge[] = [];
   const edgeSet = new Set<string>();
   const nodeIds = new Set(nodes.map((n) => n.id));
+  const fileEntryByPath = new Map(files.map((f) => [f.path, f]));
   for (const facts of factsByRel.values()) {
     extractCalls(facts, root, fileSet, factsByRel, ctx, edgeSet, edges);
+  }
+  for (const facts of factsByRel.values()) {
+    extractImportEdges(
+      facts,
+      root,
+      fileSet,
+      factsByRel,
+      ctx,
+      edgeSet,
+      edges,
+      nodes,
+      nodeIds,
+      fileEntryByPath,
+      files,
+    );
   }
   // drop edges pointing at non-existent nodes (just in case)
   const cleanEdges = edges.filter((e) => nodeIds.has(e.from) && nodeIds.has(e.to));

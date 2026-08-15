@@ -4,6 +4,7 @@
   "type": "module",
   "imports": {
     "#methods": "./build/src/methods/index.js",
+    "#models": "./build/src/models/index.js",
     "#mod/*": {
       "types": "./build/src/mod/*/index.d.ts",
       "import": "./build/src/mod/*/index.js",
