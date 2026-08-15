@@ -102,6 +102,7 @@
     "build:prod": "node scripts/esbuild.mjs --minify",
     "watch": "node scripts/esbuild.mjs --watch",
     "typecheck": "tsc --noEmit",
+    "test": "tsx --test test/**/*.test.ts",
     "package": "npm run build:prod && vsce package --no-dependencies",
     "publish": "npm run build:prod && vsce publish --no-dependencies"
   },

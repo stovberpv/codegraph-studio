@@ -6,6 +6,12 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Fixed
+
+- Call edges through Node `#` subpath imports (`package.json` `"imports"`) now
+  resolve, including aliases that point at `build`/`dist`/`out` and barrel
+  `export *` chains (e.g. `import { fn } from '#methods'`).
+
 ## [0.1.3] - 2026-08-14
 
 ### Changed
@@ -62,8 +68,9 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Initial public release.
 - TypeScript/TSX call-graph parsing via the TypeScript AST (ESM `.js`
   specifiers, `new Foo()`, barrel re-exports, namespace/aliased/dynamic imports,
-  tsconfig-path and workspace-package aliases, instance methods, and constructor/
-  field dependency injection).
+  Node `#` subpaths via `package.json` `"imports"`, tsconfig-path and
+  workspace-package aliases, instance methods, and constructor/field dependency
+  injection).
 - Fast, zoomable canvas viewer with viewport culling for large graphs.
 - On-canvas per-file CodeMirror 6 editor that writes back to the real VS Code
   document (live dirty sync, save with ⌘/Ctrl+S).

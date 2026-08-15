@@ -13,7 +13,8 @@ comments, UI, and docs.
 - **File facts** — per-file parse results (declarations, imports, methods,
   re-exports, class fields) used to resolve calls. Imports are bindings that
   carry the original exported name and kind (named/default/namespace), used for
-  alias, namespace, dynamic, and path/package-alias resolution.
+  alias, namespace, dynamic, Node `#` (`package.json` `"imports"`), and
+  path/package-alias resolution.
 
 ## Canvas entities
 

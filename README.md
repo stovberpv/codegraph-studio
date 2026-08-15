@@ -74,8 +74,10 @@ Codegraph Studio shows that shape:
 
 It works on real-world code: ESM `.js`-specifier imports, `new Foo()`, barrel
 re-exports, namespace (`import * as`), aliased, and dynamic `import()` imports,
-tsconfig-path and workspace-package aliases, top-level module calls, instance
-methods, and dependency injection through constructors and fields.
+Node `#` subpaths via `package.json` `"imports"` (including targets under
+`build`/`dist`/`out` remapped to source), tsconfig-path and workspace-package
+aliases, top-level module calls, instance methods, and dependency injection
+through constructors and fields.
 
 ## Features
 

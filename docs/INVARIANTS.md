@@ -176,8 +176,11 @@ This worker→host channel is not part of the webview protocol.
 ## Parser honesty
 
 - `parse.ts` uses the AST only (no type-checker) for speed. The resolver follows
-  aliased, namespace, and dynamic imports, plus tsconfig-path and workspace-package
-  aliases when the target is inside the parsed root.
+  aliased, namespace, and dynamic imports, plus nearest-package `package.json`
+  `"imports"` (`#…` subpaths), tsconfig-path, and workspace-package aliases when
+  the target is inside the parsed root. `"imports"` targets under emit dirs
+  (`build`/`dist`/`out`, which the walker skips) are remapped to source so
+  NodeNext projects that point aliases at compiled output still resolve.
 - Unresolved calls are dropped. Never fabricate an edge to make the graph look
   connected.
 - Empty `«module»` pseudo-nodes without any edge are removed.

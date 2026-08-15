@@ -12,6 +12,10 @@
  *     local file function -> method of the same class (this.x) -> imported name.
  *  4. Writes graph.json (nodes = functions grouped by file; edges = calls).
  *
+ * Non-relative imports resolve via nearest package.json `"imports"` (`#…`),
+ * tsconfig `paths`, and workspace package names (emit dirs in `"imports"`
+ * targets are remapped to source).
+ *
  * Usage:  tsx parse.ts [--root DIR] [--out FILE] [--include-tests]
  */
 
@@ -542,10 +546,14 @@ function collectFacts(relPath: string, sf: ts.SourceFile): FileFacts {
 // ---------------------------------------------------------------------------
 
 // ---------------------------------------------------------------------------
-// Non-relative resolution context (tsconfig path aliases + workspace packages)
+// Non-relative resolution context (tsconfig paths, package.json imports,
+// workspace packages)
 // ---------------------------------------------------------------------------
 
-/** A tsconfig `paths` rule, targets resolved to absolute filesystem templates. */
+/** Emit dirs the walker skips; stripped from package.json `"imports"` targets. */
+const EMIT_DIR_NAMES = new Set(["build", "dist", "out"]);
+
+/** A tsconfig `paths` / package.json `"imports"` rule, targets as abs templates. */
 interface AliasRule {
   prefix: string; // "@/*" -> "@/" ; "@app" (no wildcard) -> "@app"
   wildcard: boolean; // key ended with "/*"
@@ -557,14 +565,23 @@ interface PackageInfo {
   dir: string; // absolute package directory
 }
 
+/** `#` import rules owned by one package.json directory. */
+interface PackageImports {
+  dir: string; // absolute package directory
+  rules: AliasRule[];
+}
+
 /**
  * Everything {@link resolveModule} needs to resolve non-relative specifiers:
- * tsconfig `paths`/`baseUrl` aliases and pnpm-workspace package names. Built
- * once per {@link buildGraph} so per-call filesystem scans are not repeated.
+ * nearest-package `imports`, tsconfig `paths`/`baseUrl`, and workspace package
+ * names. Built once per {@link buildGraph} so per-call filesystem scans are not
+ * repeated.
  */
 interface ResolverContext {
   aliases: AliasRule[];
   packages: Map<string, PackageInfo>;
+  /** Package dirs with `#` imports, longest path first (nearest match wins). */
+  packageImportsByDir: PackageImports[];
 }
 
 /**
@@ -609,11 +626,75 @@ function packageCandidates(spec: string, packages: Map<string, PackageInfo>): st
 }
 
 /**
+ * Removes the first path segment named `build`/`dist`/`out` from an absolute
+ * base. Why: package.json `"imports"` often point at compiled output that the
+ * walker skips; mapping that emit path back to source keeps `#` aliases usable.
+ */
+function stripEmitSegment(absBase: string): string | undefined {
+  const normalized = path.normalize(absBase);
+  const sep = path.sep;
+  for (const name of EMIT_DIR_NAMES) {
+    const mid = sep + name + sep;
+    const at = normalized.indexOf(mid);
+    if (at >= 0) {
+      return path.normalize(normalized.slice(0, at) + sep + normalized.slice(at + mid.length));
+    }
+    const tail = sep + name;
+    if (normalized.endsWith(tail)) {
+      return path.normalize(normalized.slice(0, -tail.length));
+    }
+  }
+  return undefined;
+}
+
+/**
+ * Expands each base via {@link expandCandidates} and returns the first path in
+ * `fileSet`. When `stripEmit` is set, also retries after {@link stripEmitSegment}
+ * (package.json `"imports"` → source under skipped emit dirs).
+ */
+function matchBasesInFileSet(
+  bases: string[],
+  root: string,
+  fileSet: Set<string>,
+  stripEmit: boolean,
+): string | undefined {
+  for (const base of bases) {
+    const tries = [base];
+    if (stripEmit) {
+      const stripped = stripEmitSegment(base);
+      if (stripped && stripped !== base) tries.push(stripped);
+    }
+    for (const tryBase of tries) {
+      for (const abs of expandCandidates(tryBase)) {
+        const rel = toPosix(path.relative(root, abs));
+        if (fileSet.has(rel)) return rel;
+      }
+    }
+  }
+  return undefined;
+}
+
+/**
+ * Returns `#` import rules from the nearest enclosing package.json for `fromRel`.
+ * Why: Node resolves `"imports"` relative to the package that owns the importer,
+ * not a merged global map (monorepos may reuse `#lib` in multiple packages).
+ */
+function nearestPackageImports(fromRel: string, root: string, ctx: ResolverContext): AliasRule[] {
+  const fromDir = path.normalize(path.dirname(path.join(root, fromRel)));
+  for (const { dir, rules } of ctx.packageImportsByDir) {
+    if (fromDir === dir || fromDir.startsWith(dir + path.sep)) return rules;
+  }
+  return [];
+}
+
+/**
  * Resolves a module specifier to a repo-relative source path.
  * Relative specifiers resolve against the importer's directory; non-relative
- * ones go through tsconfig path aliases and workspace packages (external npm
- * packages stay unresolved). Every base is expanded via {@link expandCandidates}
- * and checked against the known file set.
+ * ones try (1) nearest package.json `"imports"`, (2) tsconfig path aliases,
+ * (3) workspace packages (external npm packages stay unresolved). Every base is
+ * expanded via {@link expandCandidates} and checked against the known file set.
+ * `"imports"` targets under emit dirs (`build`/`dist`/`out`) are remapped to
+ * source when the emit path is not in the file set.
  */
 function resolveModule(
   fromRel: string,
@@ -622,22 +703,19 @@ function resolveModule(
   fileSet: Set<string>,
   ctx: ResolverContext,
 ): string | undefined {
-  let bases: string[];
   if (spec.startsWith(".")) {
     const fromAbsDir = path.dirname(path.join(root, fromRel));
-    bases = [path.normalize(path.join(fromAbsDir, spec))];
-  } else {
-    bases = [...aliasCandidates(spec, ctx.aliases), ...packageCandidates(spec, ctx.packages)];
-    if (bases.length === 0) return undefined; // external npm package
+    const bases = [path.normalize(path.join(fromAbsDir, spec))];
+    return matchBasesInFileSet(bases, root, fileSet, false);
   }
 
-  for (const base of bases) {
-    for (const abs of expandCandidates(base)) {
-      const rel = toPosix(path.relative(root, abs));
-      if (fileSet.has(rel)) return rel;
-    }
-  }
-  return undefined;
+  const importBases = aliasCandidates(spec, nearestPackageImports(fromRel, root, ctx));
+  const fromImports = matchBasesInFileSet(importBases, root, fileSet, true);
+  if (fromImports) return fromImports;
+
+  const bases = [...aliasCandidates(spec, ctx.aliases), ...packageCandidates(spec, ctx.packages)];
+  if (bases.length === 0 && importBases.length === 0) return undefined; // external npm
+  return matchBasesInFileSet(bases, root, fileSet, false);
 }
 
 /**
@@ -894,20 +972,85 @@ function aliasCandidates(spec: string, rules: AliasRule[]): string[] {
 }
 
 /**
- * Discovers workspace packages: maps each package.json `name` to its directory.
- * Why: monorepo imports reference packages by name, so the resolver needs the
- * name→dir table to redirect `@scope/pkg/x` into that package's source.
+ * Discovers workspace packages and Node `#` subpath imports from every
+ * package.json under `root`. Why: monorepo imports use package names, and many
+ * projects (NodeNext) map `#methods` → built output only in `"imports"`, with
+ * no tsconfig `paths`. Imports stay keyed by package directory so resolution
+ * uses the nearest enclosing package.json (Node semantics).
  */
-function loadWorkspacePackages(root: string): Map<string, PackageInfo> {
+function loadPackageJsonContext(root: string): {
+  packages: Map<string, PackageInfo>;
+  packageImportsByDir: PackageImports[];
+} {
   const packages = new Map<string, PackageInfo>();
+  const packageImportsByDir: PackageImports[] = [];
   for (const file of findConfigFiles(root, (n) => n === "package.json")) {
     const json = parseJsonc(fs.readFileSync(file, "utf8").toString());
-    const name = (json as { name?: unknown })?.name;
+    if (!isRecord(json)) continue;
+    const dir = path.dirname(file);
+    const name = json.name;
     if (typeof name === "string" && name && !packages.has(name)) {
-      packages.set(name, { dir: path.dirname(file) });
+      packages.set(name, { dir });
+    }
+    if (isRecord(json.imports)) {
+      const rules = rulesFromPackageImports(dir, json.imports);
+      if (rules.length) packageImportsByDir.push({ dir, rules });
     }
   }
-  return packages;
+  // Longest directory first so the nearest enclosing package wins.
+  packageImportsByDir.sort((a, b) => b.dir.length - a.dir.length);
+  return { packages, packageImportsByDir };
+}
+
+/**
+ * Collects string path leaves from a package.json `"imports"` value (string,
+ * array, or nested condition object). Why: conditional exports nest under
+ * `types`/`import`/`default`/…; we try every leaf until one hits the file set.
+ */
+function collectImportTargets(value: unknown): string[] {
+  if (typeof value === "string") return value ? [value] : [];
+  if (Array.isArray(value)) {
+    const out: string[] = [];
+    for (const item of value) out.push(...collectImportTargets(item));
+    return out;
+  }
+  if (!isRecord(value)) return [];
+  const out: string[] = [];
+  const preferred = ["types", "import", "default", "require", "node"];
+  const seen = new Set<string>();
+  for (const key of preferred) {
+    if (!(key in value)) continue;
+    seen.add(key);
+    out.push(...collectImportTargets(value[key]));
+  }
+  for (const [key, nested] of Object.entries(value)) {
+    if (seen.has(key)) continue;
+    out.push(...collectImportTargets(nested));
+  }
+  return out;
+}
+
+/**
+ * Turns a package.json `"imports"` map into {@link AliasRule}s for `#` keys only.
+ * Targets resolve against the package directory (Node semantics).
+ */
+function rulesFromPackageImports(pkgDir: string, importsMap: Record<string, unknown>): AliasRule[] {
+  const rules: AliasRule[] = [];
+  for (const [key, value] of Object.entries(importsMap)) {
+    if (!key.startsWith("#")) continue;
+    const wildcard = key.endsWith("/*");
+    const prefix = wildcard ? key.slice(0, -1) : key; // "#mod/*" -> "#mod/"
+    const targets: string[] = [];
+    const seen = new Set<string>();
+    for (const t of collectImportTargets(value)) {
+      const abs = path.normalize(path.resolve(pkgDir, t));
+      if (seen.has(abs)) continue;
+      seen.add(abs);
+      targets.push(abs);
+    }
+    if (targets.length) rules.push({ prefix, wildcard, targets });
+  }
+  return rules;
 }
 
 // ---------------------------------------------------------------------------
@@ -1257,10 +1400,13 @@ export function buildGraph(root: string, opts: BuildOptions = {}): Graph {
   }
 
   // Second pass: calls. Build the non-relative resolver context once (tsconfig
-  // path aliases + workspace package names) and reuse it for every file.
+  // path aliases + package.json `#` imports + workspace package names) and
+  // reuse it for every file.
+  const pkgCtx = loadPackageJsonContext(root);
   const ctx: ResolverContext = {
     aliases: loadTsconfigAliases(root),
-    packages: loadWorkspacePackages(root),
+    packages: pkgCtx.packages,
+    packageImportsByDir: pkgCtx.packageImportsByDir,
   };
   const edges: Edge[] = [];
   const edgeSet = new Set<string>();
