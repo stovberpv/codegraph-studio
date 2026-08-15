@@ -6,6 +6,33 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-08-15
+
+### Added
+
+- Value-import dependency edges (`kind: "import"`) between file `«module»`
+  nodes, including through `import X; export { X }` barrels and Node `#`
+  subpaths. They participate in layout; `import type` is ignored. Import links
+  draw in a teal tint (solid; call edges stay gray).
+
+### Changed
+
+- Chrome and canvas share one palette (`viewer/palette.js` + `--cg-*` in
+  `styles.css`): named tokens instead of one-off hex/rgba. Call edges use
+  `text-dim`; hover uses `accent-hover`.
+- Marketplace icon: glass file-cards and brand-colored call arcs instead of a
+  flat four-node cycle.
+- README opens on the studio cover art, then the demo GIF.
+
+### Performance
+
+- Large graphs (e.g. ~17k links): readable cards always draw real file-file
+  strokes (including intra-island) with the same curve geometry at every zoom.
+  Only cold edges whose both ends are tiny on screen collapse to one
+  centroid-to-centroid curve per island pair. Hover/highlight draws incident
+  file-file edges on top and does not restyle bundles. View → Performance →
+  **Edge LOD** toggles speck bundling.
+
 ### Fixed
 
 - Call edges through Node `#` subpath imports (`package.json` `"imports"`) now
@@ -83,7 +110,8 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Live rebuild and a cancellable background-worker parser with progress
   reporting.
 
-[Unreleased]: https://github.com/stovberpv/codegraph-studio/compare/v0.1.3...HEAD
+[Unreleased]: https://github.com/stovberpv/codegraph-studio/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/stovberpv/codegraph-studio/compare/v0.1.3...v0.2.0
 [0.1.3]: https://github.com/stovberpv/codegraph-studio/compare/v0.1.2...v0.1.3
 [0.1.2]: https://github.com/stovberpv/codegraph-studio/compare/v0.1.1...v0.1.2
 [0.1.1]: https://github.com/stovberpv/codegraph-studio/compare/v0.1.0...v0.1.1

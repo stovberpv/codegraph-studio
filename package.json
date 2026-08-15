@@ -1,7 +1,7 @@
 {
   "name": "codegraph-studio",
   "displayName": "Codegraph Studio",
-  "version": "0.1.3",
+  "version": "0.2.0",
   "icon": "media/icon.png",
   "private": true,
   "publisher": "stovberpv",
@@ -11,7 +11,10 @@
   "engines": {
     "vscode": "^1.85.0"
   },
-  "categories": ["Other", "Visualization"],
+  "categories": [
+    "Other",
+    "Visualization"
+  ],
   "keywords": [
     "typescript",
     "call graph",
@@ -72,12 +75,24 @@
     },
     "menus": {
       "commandPalette": [
-        { "command": "codegraph.rebuild" },
-        { "command": "codegraph.rebuildFrom" }
+        {
+          "command": "codegraph.rebuild"
+        },
+        {
+          "command": "codegraph.rebuildFrom"
+        }
       ],
       "editor/title": [
-        { "command": "codegraph.rebuild", "when": "activeWebviewPanelId == 'codegraph'", "group": "navigation@1" },
-        { "command": "codegraph.rebuildFrom", "when": "activeWebviewPanelId == 'codegraph'", "group": "navigation@2" }
+        {
+          "command": "codegraph.rebuild",
+          "when": "activeWebviewPanelId == 'codegraph'",
+          "group": "navigation@1"
+        },
+        {
+          "command": "codegraph.rebuildFrom",
+          "when": "activeWebviewPanelId == 'codegraph'",
+          "group": "navigation@2"
+        }
       ]
     },
     "configuration": {
