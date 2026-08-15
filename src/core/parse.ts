@@ -10,7 +10,12 @@
  *     - function calls inside function bodies.
  *  3. Resolves calls into "function -> function" edges by name:
  *     local file function -> method of the same class (this.x) -> imported name.
- *  4. Writes graph.json (nodes = functions grouped by file; edges = calls).
+ *  4. Emits value-import edges between `«module»` nodes (file dependencies).
+ *  5. Writes graph.json (nodes = functions grouped by file; edges = calls + imports).
+ *
+ * Non-relative imports resolve via nearest package.json `"imports"` (`#…`),
+ * tsconfig `paths`, and workspace package names (emit dirs in `"imports"`
+ * targets are remapped to source).
  *
  * Usage:  tsx parse.ts [--root DIR] [--out FILE] [--include-tests]
  */
@@ -152,6 +157,7 @@ interface FileEntry {
 interface Edge {
   from: string;
   to: string;
+  kind: "call" | "import";
 }
 
 interface Graph {
@@ -188,9 +194,12 @@ interface FileFacts {
   // "Class.method" -> nodeId, and bare "method" -> nodeId (for this.x)
   methods: Map<string, string>;
   // re-exports: exportedName -> { spec, orig } for `export { a as b } from './x'`
+  // and local `export { a }` of an imported binding
   reexports: Map<string, { spec: string; orig: string }>;
   // `export * from './x'` — list of specifiers
   wildcards: string[];
+  // top-level class names declared in this file (for import-target resolution)
+  declaredNames: Set<string>;
   // local symbol name that this module exports as `default`, if statically known
   defaultExportName?: string;
   // variable name -> class name from `const x = new Foo(...)` (instance heuristic)
@@ -310,6 +319,7 @@ function collectFacts(relPath: string, sf: ts.SourceFile): FileFacts {
     methods: new Map(),
     reexports: new Map(),
     wildcards: [],
+    declaredNames: new Set(),
     instanceVars: new Map(),
     classFields: new Map(),
     fnBodies: [],
@@ -322,6 +332,9 @@ function collectFacts(relPath: string, sf: ts.SourceFile): FileFacts {
     if (ts.isImportDeclaration(stmt) && stmt.importClause) {
       const spec = (stmt.moduleSpecifier as ts.StringLiteral).text;
       const clause = stmt.importClause;
+      // Value-import edges skip `import type`; call resolution also ignores them
+      // (type-only bindings are not runtime callees).
+      if (clause.isTypeOnly) continue;
       if (clause.name) {
         // import Foo from '...'  (default import)
         facts.imports.set(clause.name.text, { kind: "default", spec });
@@ -331,6 +344,7 @@ function collectFacts(relPath: string, sf: ts.SourceFile): FileFacts {
         if (ts.isNamedImports(named)) {
           // import { a, b as c } from '...'  — record the original export name
           for (const el of named.elements) {
+            if (el.isTypeOnly) continue;
             const imported = el.propertyName ? el.propertyName.text : el.name.text;
             facts.imports.set(el.name.text, { kind: "named", spec, imported });
           }
@@ -350,16 +364,39 @@ function collectFacts(relPath: string, sf: ts.SourceFile): FileFacts {
 
     // -- re-exports: export { a as b } from './x'  /  export * from './x' ----
     if (ts.isExportDeclaration(stmt) && stmt.moduleSpecifier && ts.isStringLiteral(stmt.moduleSpecifier)) {
+      if (stmt.isTypeOnly) continue;
       const spec = stmt.moduleSpecifier.text;
       const clause = stmt.exportClause;
       if (clause && ts.isNamedExports(clause)) {
         for (const el of clause.elements) {
+          if (el.isTypeOnly) continue;
           const exported = el.name.text;
           const orig = el.propertyName ? el.propertyName.text : el.name.text;
           facts.reexports.set(exported, { spec, orig });
         }
       } else if (!clause) {
         facts.wildcards.push(spec); // export * from './x'
+      }
+      continue;
+    }
+
+    // -- local re-exports: import X from './a'; export { X } --------------
+    // Why: models barrels often import-then-re-export instead of `export … from`.
+    if (ts.isExportDeclaration(stmt) && !stmt.moduleSpecifier) {
+      if (stmt.isTypeOnly) continue;
+      const clause = stmt.exportClause;
+      if (clause && ts.isNamedExports(clause)) {
+        for (const el of clause.elements) {
+          if (el.isTypeOnly) continue;
+          const exported = el.name.text;
+          const orig = el.propertyName ? el.propertyName.text : el.name.text;
+          const binding = facts.imports.get(orig);
+          if (!binding || binding.kind === "namespace") continue;
+          facts.reexports.set(exported, {
+            spec: binding.spec,
+            orig: binding.kind === "default" ? "default" : binding.imported,
+          });
+        }
       }
       continue;
     }
@@ -395,6 +432,7 @@ function collectFacts(relPath: string, sf: ts.SourceFile): FileFacts {
     // -- class C { method() {} } ---------------------------------------
     if (ts.isClassDeclaration(stmt) && stmt.name) {
       const className = stmt.name.text;
+      facts.declaredNames.add(className);
       if (hasDefaultModifier(stmt)) facts.defaultExportName = className;
       const fields = ensureClassFields(facts, className);
       for (const member of stmt.members) {
@@ -542,10 +580,14 @@ function collectFacts(relPath: string, sf: ts.SourceFile): FileFacts {
 // ---------------------------------------------------------------------------
 
 // ---------------------------------------------------------------------------
-// Non-relative resolution context (tsconfig path aliases + workspace packages)
+// Non-relative resolution context (tsconfig paths, package.json imports,
+// workspace packages)
 // ---------------------------------------------------------------------------
 
-/** A tsconfig `paths` rule, targets resolved to absolute filesystem templates. */
+/** Emit dirs the walker skips; stripped from package.json `"imports"` targets. */
+const EMIT_DIR_NAMES = new Set(["build", "dist", "out"]);
+
+/** A tsconfig `paths` / package.json `"imports"` rule, targets as abs templates. */
 interface AliasRule {
   prefix: string; // "@/*" -> "@/" ; "@app" (no wildcard) -> "@app"
   wildcard: boolean; // key ended with "/*"
@@ -557,14 +599,23 @@ interface PackageInfo {
   dir: string; // absolute package directory
 }
 
+/** `#` import rules owned by one package.json directory. */
+interface PackageImports {
+  dir: string; // absolute package directory
+  rules: AliasRule[];
+}
+
 /**
  * Everything {@link resolveModule} needs to resolve non-relative specifiers:
- * tsconfig `paths`/`baseUrl` aliases and pnpm-workspace package names. Built
- * once per {@link buildGraph} so per-call filesystem scans are not repeated.
+ * nearest-package `imports`, tsconfig `paths`/`baseUrl`, and workspace package
+ * names. Built once per {@link buildGraph} so per-call filesystem scans are not
+ * repeated.
  */
 interface ResolverContext {
   aliases: AliasRule[];
   packages: Map<string, PackageInfo>;
+  /** Package dirs with `#` imports, longest path first (nearest match wins). */
+  packageImportsByDir: PackageImports[];
 }
 
 /**
@@ -609,11 +660,75 @@ function packageCandidates(spec: string, packages: Map<string, PackageInfo>): st
 }
 
 /**
+ * Removes the first path segment named `build`/`dist`/`out` from an absolute
+ * base. Why: package.json `"imports"` often point at compiled output that the
+ * walker skips; mapping that emit path back to source keeps `#` aliases usable.
+ */
+function stripEmitSegment(absBase: string): string | undefined {
+  const normalized = path.normalize(absBase);
+  const sep = path.sep;
+  for (const name of EMIT_DIR_NAMES) {
+    const mid = sep + name + sep;
+    const at = normalized.indexOf(mid);
+    if (at >= 0) {
+      return path.normalize(normalized.slice(0, at) + sep + normalized.slice(at + mid.length));
+    }
+    const tail = sep + name;
+    if (normalized.endsWith(tail)) {
+      return path.normalize(normalized.slice(0, -tail.length));
+    }
+  }
+  return undefined;
+}
+
+/**
+ * Expands each base via {@link expandCandidates} and returns the first path in
+ * `fileSet`. When `stripEmit` is set, also retries after {@link stripEmitSegment}
+ * (package.json `"imports"` → source under skipped emit dirs).
+ */
+function matchBasesInFileSet(
+  bases: string[],
+  root: string,
+  fileSet: Set<string>,
+  stripEmit: boolean,
+): string | undefined {
+  for (const base of bases) {
+    const tries = [base];
+    if (stripEmit) {
+      const stripped = stripEmitSegment(base);
+      if (stripped && stripped !== base) tries.push(stripped);
+    }
+    for (const tryBase of tries) {
+      for (const abs of expandCandidates(tryBase)) {
+        const rel = toPosix(path.relative(root, abs));
+        if (fileSet.has(rel)) return rel;
+      }
+    }
+  }
+  return undefined;
+}
+
+/**
+ * Returns `#` import rules from the nearest enclosing package.json for `fromRel`.
+ * Why: Node resolves `"imports"` relative to the package that owns the importer,
+ * not a merged global map (monorepos may reuse `#lib` in multiple packages).
+ */
+function nearestPackageImports(fromRel: string, root: string, ctx: ResolverContext): AliasRule[] {
+  const fromDir = path.normalize(path.dirname(path.join(root, fromRel)));
+  for (const { dir, rules } of ctx.packageImportsByDir) {
+    if (fromDir === dir || fromDir.startsWith(dir + path.sep)) return rules;
+  }
+  return [];
+}
+
+/**
  * Resolves a module specifier to a repo-relative source path.
  * Relative specifiers resolve against the importer's directory; non-relative
- * ones go through tsconfig path aliases and workspace packages (external npm
- * packages stay unresolved). Every base is expanded via {@link expandCandidates}
- * and checked against the known file set.
+ * ones try (1) nearest package.json `"imports"`, (2) tsconfig path aliases,
+ * (3) workspace packages (external npm packages stay unresolved). Every base is
+ * expanded via {@link expandCandidates} and checked against the known file set.
+ * `"imports"` targets under emit dirs (`build`/`dist`/`out`) are remapped to
+ * source when the emit path is not in the file set.
  */
 function resolveModule(
   fromRel: string,
@@ -622,22 +737,19 @@ function resolveModule(
   fileSet: Set<string>,
   ctx: ResolverContext,
 ): string | undefined {
-  let bases: string[];
   if (spec.startsWith(".")) {
     const fromAbsDir = path.dirname(path.join(root, fromRel));
-    bases = [path.normalize(path.join(fromAbsDir, spec))];
-  } else {
-    bases = [...aliasCandidates(spec, ctx.aliases), ...packageCandidates(spec, ctx.packages)];
-    if (bases.length === 0) return undefined; // external npm package
+    const bases = [path.normalize(path.join(fromAbsDir, spec))];
+    return matchBasesInFileSet(bases, root, fileSet, false);
   }
 
-  for (const base of bases) {
-    for (const abs of expandCandidates(base)) {
-      const rel = toPosix(path.relative(root, abs));
-      if (fileSet.has(rel)) return rel;
-    }
-  }
-  return undefined;
+  const importBases = aliasCandidates(spec, nearestPackageImports(fromRel, root, ctx));
+  const fromImports = matchBasesInFileSet(importBases, root, fileSet, true);
+  if (fromImports) return fromImports;
+
+  const bases = [...aliasCandidates(spec, ctx.aliases), ...packageCandidates(spec, ctx.packages)];
+  if (bases.length === 0 && importBases.length === 0) return undefined; // external npm
+  return matchBasesInFileSet(bases, root, fileSet, false);
 }
 
 /**
@@ -894,20 +1006,85 @@ function aliasCandidates(spec: string, rules: AliasRule[]): string[] {
 }
 
 /**
- * Discovers workspace packages: maps each package.json `name` to its directory.
- * Why: monorepo imports reference packages by name, so the resolver needs the
- * name→dir table to redirect `@scope/pkg/x` into that package's source.
+ * Discovers workspace packages and Node `#` subpath imports from every
+ * package.json under `root`. Why: monorepo imports use package names, and many
+ * projects (NodeNext) map `#methods` → built output only in `"imports"`, with
+ * no tsconfig `paths`. Imports stay keyed by package directory so resolution
+ * uses the nearest enclosing package.json (Node semantics).
  */
-function loadWorkspacePackages(root: string): Map<string, PackageInfo> {
+function loadPackageJsonContext(root: string): {
+  packages: Map<string, PackageInfo>;
+  packageImportsByDir: PackageImports[];
+} {
   const packages = new Map<string, PackageInfo>();
+  const packageImportsByDir: PackageImports[] = [];
   for (const file of findConfigFiles(root, (n) => n === "package.json")) {
     const json = parseJsonc(fs.readFileSync(file, "utf8").toString());
-    const name = (json as { name?: unknown })?.name;
+    if (!isRecord(json)) continue;
+    const dir = path.dirname(file);
+    const name = json.name;
     if (typeof name === "string" && name && !packages.has(name)) {
-      packages.set(name, { dir: path.dirname(file) });
+      packages.set(name, { dir });
+    }
+    if (isRecord(json.imports)) {
+      const rules = rulesFromPackageImports(dir, json.imports);
+      if (rules.length) packageImportsByDir.push({ dir, rules });
     }
   }
-  return packages;
+  // Longest directory first so the nearest enclosing package wins.
+  packageImportsByDir.sort((a, b) => b.dir.length - a.dir.length);
+  return { packages, packageImportsByDir };
+}
+
+/**
+ * Collects string path leaves from a package.json `"imports"` value (string,
+ * array, or nested condition object). Why: conditional exports nest under
+ * `types`/`import`/`default`/…; we try every leaf until one hits the file set.
+ */
+function collectImportTargets(value: unknown): string[] {
+  if (typeof value === "string") return value ? [value] : [];
+  if (Array.isArray(value)) {
+    const out: string[] = [];
+    for (const item of value) out.push(...collectImportTargets(item));
+    return out;
+  }
+  if (!isRecord(value)) return [];
+  const out: string[] = [];
+  const preferred = ["types", "import", "default", "require", "node"];
+  const seen = new Set<string>();
+  for (const key of preferred) {
+    if (!(key in value)) continue;
+    seen.add(key);
+    out.push(...collectImportTargets(value[key]));
+  }
+  for (const [key, nested] of Object.entries(value)) {
+    if (seen.has(key)) continue;
+    out.push(...collectImportTargets(nested));
+  }
+  return out;
+}
+
+/**
+ * Turns a package.json `"imports"` map into {@link AliasRule}s for `#` keys only.
+ * Targets resolve against the package directory (Node semantics).
+ */
+function rulesFromPackageImports(pkgDir: string, importsMap: Record<string, unknown>): AliasRule[] {
+  const rules: AliasRule[] = [];
+  for (const [key, value] of Object.entries(importsMap)) {
+    if (!key.startsWith("#")) continue;
+    const wildcard = key.endsWith("/*");
+    const prefix = wildcard ? key.slice(0, -1) : key; // "#mod/*" -> "#mod/"
+    const targets: string[] = [];
+    const seen = new Set<string>();
+    for (const t of collectImportTargets(value)) {
+      const abs = path.normalize(path.resolve(pkgDir, t));
+      if (seen.has(abs)) continue;
+      seen.add(abs);
+      targets.push(abs);
+    }
+    if (targets.length) rules.push({ prefix, wildcard, targets });
+  }
+  return rules;
 }
 
 // ---------------------------------------------------------------------------
@@ -951,11 +1128,179 @@ function extractCalls(
     }
 
     for (const to of targets) {
-      const key = fn.id + "\u0000" + to;
+      const key = "call\u0000" + fn.id + "\u0000" + to;
       if (edgeSet.has(key)) continue;
       edgeSet.add(key);
-      edges.push({ from: fn.id, to });
+      edges.push({ from: fn.id, to, kind: "call" });
     }
+  }
+}
+
+/**
+ * Ensures a `«module»` pseudo-node exists on `facts` and is registered in the
+ * graph node/file lists. Why: import edges attach to module nodes so files
+ * without callable exports (e.g. Sequelize models) still show dependencies.
+ */
+function ensureModuleNode(
+  facts: FileFacts,
+  nodes: FnNode[],
+  nodeIds: Set<string>,
+  fileEntryByPath: Map<string, FileEntry>,
+  files: FileEntry[],
+): string {
+  const id = `${facts.relPath}#${MODULE_NAME}`;
+  const existing = facts.fnBodies.find((e) => e.node.kind === "module");
+  if (existing) {
+    if (!nodeIds.has(existing.node.id)) {
+      nodes.push(existing.node);
+      nodeIds.add(existing.node.id);
+      let fe = fileEntryByPath.get(facts.relPath);
+      if (!fe) {
+        fe = { path: facts.relPath, functions: [] };
+        files.push(fe);
+        fileEntryByPath.set(facts.relPath, fe);
+      }
+      if (!fe.functions.includes(existing.node.id)) fe.functions.push(existing.node.id);
+    }
+    return existing.node.id;
+  }
+  const modNode: FnNode = {
+    id,
+    name: MODULE_NAME,
+    file: facts.relPath,
+    kind: "module",
+    line: 1,
+  };
+  facts.fnBodies.push({ node: modNode, body: facts.sf, isModule: true, scan: [] });
+  nodes.push(modNode);
+  nodeIds.add(id);
+  let fe = fileEntryByPath.get(facts.relPath);
+  if (!fe) {
+    fe = { path: facts.relPath, functions: [] };
+    files.push(fe);
+    fileEntryByPath.set(facts.relPath, fe);
+  }
+  fe.functions.push(id);
+  return id;
+}
+
+/**
+ * Finds the defining file for an exported symbol, following re-exports
+ * (`export { a } from './x'`, local `export { imported }`, and `export *`).
+ * Why: import edges should land on the file that declares the symbol, not a
+ * barrel that only re-exports it.
+ */
+function resolveExportFile(
+  rel: string,
+  name: string,
+  root: string,
+  fileSet: Set<string>,
+  factsByRel: Map<string, FileFacts>,
+  ctx: ResolverContext,
+  seen: Set<string>,
+): string | undefined {
+  const key = rel + "|" + name;
+  if (seen.has(key)) return undefined;
+  seen.add(key);
+
+  const tf = factsByRel.get(rel);
+  if (!tf) return undefined;
+
+  if (name === DEFAULT_IMPORT) {
+    if (tf.defaultExportName) return rel;
+    const red = tf.reexports.get("default");
+    if (red) {
+      const nr = resolveModule(rel, red.spec, root, fileSet, ctx);
+      if (nr) {
+        const orig = red.orig === "default" ? DEFAULT_IMPORT : red.orig;
+        return resolveExportFile(nr, orig, root, fileSet, factsByRel, ctx, seen);
+      }
+    }
+    return undefined;
+  }
+
+  if (tf.localFns.has(name) || tf.declaredNames.has(name)) return rel;
+  for (const m of tf.methods.keys()) {
+    if (m.startsWith(name + ".")) return rel;
+  }
+
+  const re = tf.reexports.get(name);
+  if (re) {
+    const nr = resolveModule(rel, re.spec, root, fileSet, ctx);
+    if (nr) {
+      const orig = re.orig === "default" ? DEFAULT_IMPORT : re.orig;
+      return resolveExportFile(nr, orig, root, fileSet, factsByRel, ctx, seen);
+    }
+  }
+
+  for (const spec of tf.wildcards) {
+    const nr = resolveModule(rel, spec, root, fileSet, ctx);
+    if (nr) {
+      const r = resolveExportFile(nr, name, root, fileSet, factsByRel, ctx, seen);
+      if (r) return r;
+    }
+  }
+
+  return undefined;
+}
+
+/**
+ * Emits file-level import edges (`kind: "import"`) between `«module»` nodes for
+ * each resolved value import. Named/default imports follow barrels to the
+ * defining file; namespace imports target the resolved module itself.
+ * Deduped per importer→importee file pair. Unresolved / external specs are dropped.
+ */
+function extractImportEdges(
+  facts: FileFacts,
+  root: string,
+  fileSet: Set<string>,
+  factsByRel: Map<string, FileFacts>,
+  ctx: ResolverContext,
+  edgeSet: Set<string>,
+  edges: Edge[],
+  nodes: FnNode[],
+  nodeIds: Set<string>,
+  fileEntryByPath: Map<string, FileEntry>,
+  files: FileEntry[],
+): void {
+  if (facts.imports.size === 0) return;
+
+  const seenPairs = new Set<string>();
+  const seenBindings = new Set<string>();
+
+  for (const binding of facts.imports.values()) {
+    const bkey =
+      binding.kind === "named"
+        ? `n:${binding.spec}:${binding.imported}`
+        : `${binding.kind}:${binding.spec}`;
+    if (seenBindings.has(bkey)) continue;
+    seenBindings.add(bkey);
+
+    const mod = resolveModule(facts.relPath, binding.spec, root, fileSet, ctx);
+    if (!mod) continue;
+
+    let targetRel: string | undefined;
+    if (binding.kind === "namespace") {
+      targetRel = mod;
+    } else {
+      const exportName = binding.kind === "default" ? DEFAULT_IMPORT : binding.imported;
+      targetRel = resolveExportFile(mod, exportName, root, fileSet, factsByRel, ctx, new Set());
+    }
+    if (!targetRel || targetRel === facts.relPath) continue;
+
+    const pairKey = facts.relPath + "\u0000" + targetRel;
+    if (seenPairs.has(pairKey)) continue;
+    seenPairs.add(pairKey);
+
+    const targetFacts = factsByRel.get(targetRel);
+    if (!targetFacts) continue;
+
+    const fromId = ensureModuleNode(facts, nodes, nodeIds, fileEntryByPath, files);
+    const toId = ensureModuleNode(targetFacts, nodes, nodeIds, fileEntryByPath, files);
+    const key = "import\u0000" + fromId + "\u0000" + toId;
+    if (edgeSet.has(key)) continue;
+    edgeSet.add(key);
+    edges.push({ from: fromId, to: toId, kind: "import" });
   }
 }
 
@@ -1257,16 +1602,35 @@ export function buildGraph(root: string, opts: BuildOptions = {}): Graph {
   }
 
   // Second pass: calls. Build the non-relative resolver context once (tsconfig
-  // path aliases + workspace package names) and reuse it for every file.
+  // path aliases + package.json `#` imports + workspace package names) and
+  // reuse it for every file.
+  const pkgCtx = loadPackageJsonContext(root);
   const ctx: ResolverContext = {
     aliases: loadTsconfigAliases(root),
-    packages: loadWorkspacePackages(root),
+    packages: pkgCtx.packages,
+    packageImportsByDir: pkgCtx.packageImportsByDir,
   };
   const edges: Edge[] = [];
   const edgeSet = new Set<string>();
   const nodeIds = new Set(nodes.map((n) => n.id));
+  const fileEntryByPath = new Map(files.map((f) => [f.path, f]));
   for (const facts of factsByRel.values()) {
     extractCalls(facts, root, fileSet, factsByRel, ctx, edgeSet, edges);
+  }
+  for (const facts of factsByRel.values()) {
+    extractImportEdges(
+      facts,
+      root,
+      fileSet,
+      factsByRel,
+      ctx,
+      edgeSet,
+      edges,
+      nodes,
+      nodeIds,
+      fileEntryByPath,
+      files,
+    );
   }
   // drop edges pointing at non-existent nodes (just in case)
   const cleanEdges = edges.filter((e) => nodeIds.has(e.from) && nodeIds.has(e.to));

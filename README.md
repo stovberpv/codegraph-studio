@@ -12,6 +12,10 @@
   <a href="LICENSE"><img alt="License: MIT" src="https://img.shields.io/github/license/stovberpv/codegraph-studio?color=blue"></a>
 </p>
 
+<p align="center">
+  <img alt="Codegraph Studio — a TypeScript call graph you can edit on the canvas" src="https://raw.githubusercontent.com/stovberpv/codegraph-studio/main/media/cover.png" width="900">
+</p>
+
 Codegraph Studio parses a TypeScript/TSX project with the TypeScript AST, builds
 a call graph between functions, and renders it on a fast, zoomable canvas. Cards
 are files, curved arrows are calls. Inside VS Code you can open a file **on the
@@ -73,9 +77,12 @@ Codegraph Studio shows that shape:
   canvas, keeping your spatial context.
 
 It works on real-world code: ESM `.js`-specifier imports, `new Foo()`, barrel
-re-exports, namespace (`import * as`), aliased, and dynamic `import()` imports,
-tsconfig-path and workspace-package aliases, top-level module calls, instance
-methods, and dependency injection through constructors and fields.
+re-exports (including `import X; export { X }`), namespace (`import * as`),
+aliased, and dynamic `import()` imports, Node `#` subpaths via `package.json`
+`"imports"` (including targets under `build`/`dist`/`out` remapped to source),
+tsconfig-path and workspace-package aliases, value-import dependency edges on
+the canvas, top-level module calls, instance methods, and dependency injection
+through constructors and fields.
 
 ## Features
 

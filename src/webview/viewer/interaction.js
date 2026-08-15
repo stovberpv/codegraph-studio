@@ -5,7 +5,7 @@
  */
 import { canvas, tooltip } from "./dom.js";
 import { state, cam, markDirty } from "./state.js";
-import { basename, escapeHtml, isFolder, isGroup, screenToWorld } from "./utils.js";
+import { basename, cardOf, edgeEndTouches, escapeHtml, isFolder, isGroup, screenToWorld } from "./utils.js";
 import { t } from "./i18n.js";
 import { CTRL_LABEL, FOLDER_CTRL_LABEL } from "./icons.js";
 import {
@@ -332,8 +332,11 @@ function applyHover(entity) {
   state.hoverNeighbors = new Set();
   if (entity) {
     for (const e of state.renderEdges) {
-      if (e.a === entity) state.hoverNeighbors.add(e.b);
-      else if (e.b === entity) state.hoverNeighbors.add(e.a);
+      const other = edgeEndTouches(e.a, entity) ? e.b : edgeEndTouches(e.b, entity) ? e.a : null;
+      if (!other) continue;
+      state.hoverNeighbors.add(other);
+      const card = cardOf(other);
+      if (card) state.hoverNeighbors.add(card);
     }
   }
   markDirty();

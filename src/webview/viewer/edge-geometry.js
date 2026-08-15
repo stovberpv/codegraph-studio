@@ -209,6 +209,33 @@ export function addCurve(path, a, b) {
   path.bezierCurveTo(p.c1x, p.c1y, p.c2x, p.c2y, p.tx, p.ty);
 }
 
+/**
+ * Cheap facing-side cubic (no clip scoring). Used for island-centroid bundles.
+ */
+export function edgeGeomFast(a, b) {
+  const dx = b.x + b.w / 2 - (a.x + a.w / 2);
+  const dy = b.y + b.h / 2 - (a.y + a.h / 2);
+  let ia;
+  let ib;
+  if (Math.abs(dx) >= Math.abs(dy)) {
+    ia = dx >= 0 ? 0 : 1; // right / left
+    ib = dx >= 0 ? 1 : 0;
+  } else {
+    ia = dy >= 0 ? 2 : 3; // bottom / top
+    ib = dy >= 0 ? 3 : 2;
+  }
+  const dist = Math.hypot(dx, dy);
+  const pull = Math.max(16, Math.min(80, dist * 0.2));
+  return cubicPair(a, b, ia, ib, pull);
+}
+
+/** Append {@link edgeGeomFast} onto a Path2D. */
+export function addCurveFast(path, a, b) {
+  const p = edgeGeomFast(a, b);
+  path.moveTo(p.sx, p.sy);
+  path.bezierCurveTo(p.c1x, p.c1y, p.c2x, p.c2y, p.tx, p.ty);
+}
+
 /** Draw an arrowhead at the end of the edge from a to b. */
 export function drawArrow(a, b, color) {
   const p = edgeGeom(a, b);

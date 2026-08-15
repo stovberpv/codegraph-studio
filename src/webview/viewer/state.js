@@ -13,8 +13,8 @@
 export const state = {
   dirty: true,
 
-  edges: [], // {from,to} at function level
-  renderEdges: [], // aggregated for drawing {a,b} (a/b — node or group)
+  edges: [], // {from,to,kind} at function level (kind: "call" | "import")
+  renderEdges: [], // aggregated for drawing {a,b,kind} (a/b — node or group)
   groups: [], // file cards
   unitAdj: new Map(), // unit -> Set<unit> (in+out neighbors; unit = file or folder card)
   folders: [], // folder entities (folder mode only)
@@ -48,6 +48,8 @@ export const state = {
   lazyFocus: null, // group | null — file whose edges are shown on click
   zenMode: false, // recolor: only edited files keep their hue, rest go gray
   hideIsolated: false,
+  /** When on, cold cross-island speck pairs draw as one centroid curve. */
+  edgeLod: true,
 
   hoverButton: null, // {g, action} — control under the cursor
   selection: new Set(), // selected cards (for group dragging)

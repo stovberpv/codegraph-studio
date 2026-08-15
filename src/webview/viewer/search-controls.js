@@ -14,6 +14,7 @@ import {
   modeFoldersEl,
   searchEl,
   zenModeEl,
+  edgeLodEl,
 } from "./dom.js";
 import { state, cam, nodes, markDirty } from "./state.js";
 import { nodeVisible } from "./visibility.js";
@@ -81,6 +82,7 @@ function renderToolbar() {
   if (lazyModeEl) lazyModeEl.classList.toggle("active", state.lazyMode);
   if (hideIsolatedEl) hideIsolatedEl.classList.toggle("active", state.hideIsolated);
   if (zenModeEl) zenModeEl.classList.toggle("active", state.zenMode);
+  if (edgeLodEl) edgeLodEl.classList.toggle("active", !!state.edgeLod);
 }
 ui.subscribe(renderToolbar);
 
@@ -146,6 +148,16 @@ export function setZenMode(on) {
 }
 if (zenModeEl) {
   zenModeEl.addEventListener("click", () => setZenMode(!state.zenMode));
+}
+
+/** Toggle cold island-pair bundling for tiny cross-island cards. */
+export function setEdgeLod(on) {
+  state.edgeLod = !!on;
+  ui.notify();
+  markDirty();
+}
+if (edgeLodEl) {
+  edgeLodEl.addEventListener("click", () => setEdgeLod(!state.edgeLod));
 }
 
 document.getElementById("relayout").addEventListener("click", () => {

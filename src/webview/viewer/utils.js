@@ -50,6 +50,12 @@ export function splitName(f) {
 export const isGroup = (x) => x && x.ids !== undefined;
 /** True if x is a folder entity. */
 export const isFolder = (x) => x && x.files !== undefined;
+/** File card or folder for a node/card/folder; null if none. */
+export const cardOf = (x) => (isFolder(x) || isGroup(x) ? x : (x && x.group) || null);
+/** True if drawable endpoint `end` belongs to hover/focus entity `entity`. */
+export function edgeEndTouches(end, entity) {
+  return !!end && !!entity && (end === entity || end.group === entity);
+}
 /** Stable string key for an entity (folder/group/node) used in edge dedupe. */
 export const entKey = (x) => (isFolder(x) ? "f:" + x.key : isGroup(x) ? "g:" + x.path : "n:" + x.id);
 

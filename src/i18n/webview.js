@@ -31,6 +31,7 @@ export const LOCALES = {
     view_layout_label: "Layout",
     view_focus_label: "Focus",
     view_visibility_label: "Visibility",
+    view_optimize_label: "Performance",
     arrange_cards_label: "Cards",
 
     // project menu — reparse / folder
@@ -59,6 +60,9 @@ export const LOCALES = {
     show_hidden_title: "Show hidden files and restore incoming links",
     hide_isolated: "Hide isolated",
     hide_isolated_title: "Hide files with no cross-file links",
+    edge_lod: "Edge LOD",
+    edge_lod_title:
+      "When cards are tiny, draw one curve per island pair instead of every file-to-file link.",
 
     // arrange menu — fit / reset / cards
     relayout: "Reset layout",

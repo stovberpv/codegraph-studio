@@ -11,6 +11,7 @@ import { oneDark } from "@codemirror/theme-one-dark";
 import { syntaxHighlighting, defaultHighlightStyle } from "@codemirror/language";
 import { ACTIONS, HEADER_H } from "./viewer/constants.js";
 import { ICON_D } from "./viewer/icon-paths.js";
+import { pal } from "./viewer/palette.js";
 
 const MAX_OPEN = 4;
 let zTop = 1;
@@ -441,7 +442,7 @@ function mountView(path, text) {
           overflowY: "auto",
           fontFamily: "ui-monospace, SFMono-Regular, Menlo, Consolas, monospace",
         },
-        ".cm-content": { caretColor: "#e6edf3" },
+        ".cm-content": { caretColor: pal.text },
       }),
     ],
   });

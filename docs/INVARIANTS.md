@@ -176,10 +176,24 @@ This worker→host channel is not part of the webview protocol.
 ## Parser honesty
 
 - `parse.ts` uses the AST only (no type-checker) for speed. The resolver follows
-  aliased, namespace, and dynamic imports, plus tsconfig-path and workspace-package
-  aliases when the target is inside the parsed root.
-- Unresolved calls are dropped. Never fabricate an edge to make the graph look
-  connected.
+  aliased, namespace, and dynamic imports, plus nearest-package `package.json`
+  `"imports"` (`#…` subpaths), tsconfig-path, and workspace-package aliases when
+  the target is inside the parsed root. `"imports"` targets under emit dirs
+  (`build`/`dist`/`out`, which the walker skips) are remapped to source so
+  NodeNext projects that point aliases at compiled output still resolve.
+- Edges are either **call** (resolved callee) or **import** (value module
+  dependency between `«module»` nodes). Import edges follow barrels — including
+  local `import X; export { X }` — to the defining file, participate in layout
+  like calls, and never include `import type`. Unresolved calls/imports are
+  dropped. Never fabricate an edge to make the graph look connected.
+- Canvas may skip drawing an edge whose **both** endpoints are off-screen.
+  Readable cards always get real file-file strokes, including intra-island, with
+  the same curve geometry at every zoom. Cross-island links collapse to **one
+  centroid-to-centroid curve per island pair** only when both endpoints are
+  on-screen specks and the edge is cold. Hover and search highlight never restyle
+  those bundles: they draw the incident file-file edges on top. The View menu
+  **Edge LOD** toggle turns speck bundling off. Layout and graph data still use
+  the full edge set.
 - Empty `«module»` pseudo-nodes without any edge are removed.
 
 ## Change discipline

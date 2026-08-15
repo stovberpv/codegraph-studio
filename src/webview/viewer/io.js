@@ -154,7 +154,7 @@ export function build(data) {
     if (!from || !to) continue;
     from.deg++;
     to.deg++;
-    state.edges.push({ from, to });
+    state.edges.push({ from, to, kind: e.kind === "import" ? "import" : "call" });
   }
   for (const n of nodes.values()) n.adj = new Set();
   for (const e of state.edges) {
